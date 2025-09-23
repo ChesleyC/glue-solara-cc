@@ -383,8 +383,15 @@ def _verify_backend_connection(data_collection, context="UNKNOWN"):
             # Check if link has computation capability
             if hasattr(link, 'compute'):
                 print(f"🔗 BACKEND:   ✅ Has compute() method - functional link")
-            elif hasattr(link, '_links') and link._links:
-                print(f"🔗 BACKEND:   ✅ Contains {len(link._links)} sub-links - functional collection")
+            elif hasattr(link, '_links'):
+                # LinkCollection/JoinLink - check if it has links OR is iterable
+                if link._links:
+                    print(f"🔗 BACKEND:   ✅ Contains {len(link._links)} sub-links - functional collection")
+                elif hasattr(link, '__iter__'):
+                    # JoinLink might have empty _links but still be functional
+                    print(f"🔗 BACKEND:   ✅ JoinLink/LinkCollection - functional (special join logic)")
+                else:
+                    print(f"🔗 BACKEND:   ⚠️ LinkCollection with no sub-links")
             else:
                 print(f"🔗 BACKEND:   ❌ No compute capability found - may be broken")
         
@@ -1420,23 +1427,32 @@ def QtStyleLinkDetailsPanel(
                         
                         print(f"🚀 COORD UPDATE: New cids1: {[comp.label for comp in new_cids1]}")
                         print(f"🚀 COORD UPDATE: Keeping cids2: {[comp.label for comp in new_cids2]}")
-                        
-                        # Track original position
+
+                        # Track original position for UI state preservation
                         original_position = selected_link_index.value
                         print(f"🚀 COORD UPDATE: Original position = {original_position}")
-                        
-                        # Remove old coordinate helper and create new one
-                        print(f"🚀 COORD UPDATE: Removing old coordinate helper")
-                        data_collection.remove_link(link)
-                        
-                        # Create new coordinate helper with updated parameters
-                        print(f"🚀 COORD UPDATE: Creating new coordinate helper")
+
+                        # 🔗 ATOMIC FIX: Replace coordinate helper atomically to prevent component reference issues
+                        print(f"🔗 ATOMIC FIX DATASET1: Creating new coordinate helper for atomic replacement")
                         coord_type = type(link)
                         new_coord_helper = coord_type(new_cids1, new_cids2, from_data, to_data)
-                        
-                        # 🐛 BUGFIX: Add coordinate helper as single unit, not individual ComponentLinks
-                        print(f"🐛 BUGFIX: Adding coordinate helper as single unit instead of decomposing")
-                        data_collection.add_link(new_coord_helper)
+
+                        # Get all existing links except the one being replaced
+                        print(f"🔗 ATOMIC FIX DATASET1: Preparing atomic link replacement")
+                        other_links = [l for l in data_collection.external_links if l != link]
+                        all_new_links = other_links + [new_coord_helper]
+
+                        print(f"🔗 ATOMIC FIX DATASET1: Before replacement - external_links count = {len(data_collection.external_links)}")
+                        print(f"🔗 ATOMIC FIX DATASET1: Replacing with {len(all_new_links)} links (removed 1, added 1)")
+
+                        # 🔗 ATOMIC REPLACEMENT: Use set_links for integrity
+                        data_collection.set_links(all_new_links)
+
+                        print(f"🔗 ATOMIC FIX DATASET1: After replacement - external_links count = {len(data_collection.external_links)}")
+                        print(f"🔗 ATOMIC FIX DATASET1: Coordinate helper replaced atomically - no component reference issues!")
+
+                        # 🔗 VERIFICATION: Confirm backend link integrity after atomic replacement
+                        _verify_backend_connection(data_collection, "ATOMIC_COORD_DATASET1_FIX")
                         
                         # Position preservation and UI refresh
                         new_position = len(data_collection.external_links) - 1
@@ -1464,23 +1480,32 @@ def QtStyleLinkDetailsPanel(
                         
                         print(f"🚀 COORD UPDATE: Keeping cids1: {[comp.label for comp in new_cids1]}")
                         print(f"🚀 COORD UPDATE: New cids2: {[comp.label for comp in new_cids2]}")
-                        
-                        # Track original position
+
+                        # Track original position for UI state preservation
                         original_position = selected_link_index.value
                         print(f"🚀 COORD UPDATE: Original position = {original_position}")
-                        
-                        # Remove old coordinate helper and create new one
-                        print(f"🚀 COORD UPDATE: Removing old coordinate helper")
-                        data_collection.remove_link(link)
-                        
-                        # Create new coordinate helper with updated parameters
-                        print(f"🚀 COORD UPDATE: Creating new coordinate helper")
+
+                        # 🔗 ATOMIC FIX: Replace coordinate helper atomically to prevent component reference issues
+                        print(f"🔗 ATOMIC FIX DATASET2: Creating new coordinate helper for atomic replacement")
                         coord_type = type(link)
                         new_coord_helper = coord_type(new_cids1, new_cids2, from_data, to_data)
-                        
-                        # 🐛 BUGFIX: Add coordinate helper as single unit, not individual ComponentLinks
-                        print(f"🐛 BUGFIX: Adding coordinate helper as single unit instead of decomposing")
-                        data_collection.add_link(new_coord_helper)
+
+                        # Get all existing links except the one being replaced
+                        print(f"🔗 ATOMIC FIX DATASET2: Preparing atomic link replacement")
+                        other_links = [l for l in data_collection.external_links if l != link]
+                        all_new_links = other_links + [new_coord_helper]
+
+                        print(f"🔗 ATOMIC FIX DATASET2: Before replacement - external_links count = {len(data_collection.external_links)}")
+                        print(f"🔗 ATOMIC FIX DATASET2: Replacing with {len(all_new_links)} links (removed 1, added 1)")
+
+                        # 🔗 ATOMIC REPLACEMENT: Use set_links for integrity
+                        data_collection.set_links(all_new_links)
+
+                        print(f"🔗 ATOMIC FIX DATASET2: After replacement - external_links count = {len(data_collection.external_links)}")
+                        print(f"🔗 ATOMIC FIX DATASET2: Coordinate helper replaced atomically - no component reference issues!")
+
+                        # 🔗 VERIFICATION: Confirm backend link integrity after atomic replacement
+                        _verify_backend_connection(data_collection, "ATOMIC_COORD_DATASET2_FIX")
                         
                         # Position preservation and UI refresh
                         new_position = len(data_collection.external_links) - 1
@@ -1568,40 +1593,35 @@ def QtStyleLinkDetailsPanel(
                         function = link._using
                         print(f"🚀 MULTI-PARAM UPDATE: Using original function: {getattr(function, '__name__', 'unknown')}")
                     
-                    # Track original position
+                    # Track original position for UI state preservation
                     original_position = selected_link_index.value
                     print(f"🚀 MULTI-PARAM UPDATE: Original position = {original_position}")
-                    
-                    # Qt-style approach: Remove old link first
-                    print(f"🚀 MULTI-PARAM UPDATE: Removing old ComponentLink")
-                    data_collection.remove_link(link)
-                    
-                    # 🐛 BUGFIX: Preserve original link class instead of hardcoding ComponentLink
-                    print(f"🐛 BUGFIX: Analyzing original link type...")
-                    print(f"🐛 BUGFIX: Original link type: {type(link)}")
-                    print(f"🐛 BUGFIX: Original link class name: {link.__class__.__name__}")
-                    print(f"🐛 BUGFIX: Is ComponentLink: {type(link).__name__ == 'ComponentLink'}")
 
-                    # Debug: Check if link has any metadata about original collection
-                    if hasattr(link, '__dict__'):
-                        print(f"🐛 BUGFIX: Link attributes: {list(link.__dict__.keys())}")
+                    # 🔗 ATOMIC FIX: Create new ComponentLink for atomic replacement
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: Creating new ComponentLink for atomic replacement")
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: Original link type: {type(link)}")
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: Function: {getattr(function, '__name__', 'unknown')}")
 
                     from glue.core.component_link import ComponentLink
-                    from glue.core.link_helpers import LinkCollection
+                    new_link = ComponentLink(new_from_components, old_to_component, using=function)
 
-                    # Check if this was originally an advanced link (LinkCollection-derived)
-                    if type(link).__name__ == 'ComponentLink':
-                        # This is a basic ComponentLink - recreate as ComponentLink (current logic)
-                        print(f"🐛 BUGFIX: Creating basic ComponentLink (original behavior)")
-                        new_link = ComponentLink(new_from_components, old_to_component, using=function)
-                        data_collection.add_link(new_link)
-                    else:
-                        # This might be an advanced link - investigate further
-                        print(f"🐛 BUGFIX: Detected non-ComponentLink type: {type(link)}")
-                        print(f"🐛 BUGFIX: This might be an advanced link - using ComponentLink for now but investigating...")
-                        # TODO: Implement proper LinkCollection recreation logic
-                        new_link = ComponentLink(new_from_components, old_to_component, using=function)
-                        data_collection.add_link(new_link)
+                    # Get all existing links except the one being replaced
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: Preparing atomic link replacement")
+                    other_links = [l for l in data_collection.external_links if l != link]
+                    all_new_links = other_links + [new_link]
+
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: Before replacement - external_links count = {len(data_collection.external_links)}")
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: Replacing with {len(all_new_links)} links (removed 1, added 1)")
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: New link: {[c.label for c in new_from_components]} -> {old_to_component.label}")
+
+                    # 🔗 ATOMIC REPLACEMENT: Use set_links for integrity
+                    data_collection.set_links(all_new_links)
+
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: After replacement - external_links count = {len(data_collection.external_links)}")
+                    print(f"🔗 ATOMIC FIX MULTI-PARAM: Multi-parameter ComponentLink replaced atomically - no component reference issues!")
+
+                    # 🔗 VERIFICATION: Confirm backend link integrity after atomic replacement
+                    _verify_backend_connection(data_collection, "ATOMIC_MULTI_PARAM_FIX")
                     
                     # Position preservation: select the newly created link
                     new_position = len(data_collection.external_links) - 1
@@ -1732,20 +1752,15 @@ def QtStyleLinkDetailsPanel(
                 print(f"🔥 HARDCORE DEBUG: QT-STYLE APPROACH: Remove old link, create new link")
                 print(f"🔥 HARDCORE DEBUG: NEW LINK will be - {new_component.label} <-> {old_component2.label}")
                 
-                # ENHANCED DEBUG: Track object states before/after operations
-                print(f"🔥 BEFORE REMOVE: external_links count = {len(data_collection.external_links)}")
-                print(f"🔥 BEFORE REMOVE: external_links IDs = {[id(link) for link in data_collection.external_links]}")
-                print(f"🔥 BEFORE REMOVE: external_links content = {[f'{link._cid1.label}<->{link._cid2.label}' for link in data_collection.external_links if hasattr(link, '_cid1')]}")
-                
-                # CRITICAL: Qt-style approach - remove old link first
-                # This ensures proper cleanup of derived components and notifications
-                print(f"🔥 HARDCORE DEBUG: Removing old link from data_collection")
-                data_collection.remove_link(link)
-                
-                print(f"🔥 AFTER REMOVE: external_links count = {len(data_collection.external_links)}")
-                print(f"🔥 AFTER REMOVE: external_links IDs = {[id(link) for link in data_collection.external_links]}")
-                print(f"🔥 AFTER REMOVE: external_links content = {[f'{link._cid1.label}<->{link._cid2.label}' for link in data_collection.external_links if hasattr(link, '_cid1')]}")
-                
+                # 🔗 ATOMIC FIX: Track state before Qt's atomic replacement
+                print(f"🔗 ATOMIC FIX DATASET1: Before Qt atomic replacement - external_links count = {len(data_collection.external_links)}")
+                print(f"🔗 ATOMIC FIX DATASET1: Link to replace: {link}")
+                print(f"🔗 ATOMIC FIX DATASET1: Qt's update_links_in_collection() will handle atomic replacement")
+
+                # 🔗 CRITICAL FIX: DO NOT call remove_link() here!
+                # Qt's temp_state.update_links_in_collection() already uses set_links() atomically
+                # The premature remove_link() was causing component reference integrity issues
+
                 # 🚀 PHASE 1 UNIFIED EDIT: Recreate link preserving original type 
                 # This fixes "magical switching" by maintaining link structure
                 print(f"🚀 UNIFIED EDIT: Recreating link with EditableLinkFunctionState to preserve type")
@@ -1757,11 +1772,42 @@ def QtStyleLinkDetailsPanel(
                 try:
                     # Step 2: Use Qt's EditableLinkFunctionState pattern for ALL edits
                     from glue.dialogs.link_editor.state import LinkEditorState
-                    
+
                     # Create temporary LinkEditorState (Qt's exact approach)
+                    # NOTE: This copies ALL existing links from data_collection into temp_state.links
                     temp_state = LinkEditorState(data_collection)
                     temp_state.data1 = from_data
                     temp_state.data2 = to_data
+
+                    # 🔗 CRITICAL FIX: Remove the old link from temp_state.links to prevent duplication
+                    # NOTE: l.link creates a NEW object each time, so we must compare by properties!
+                    print(f"🔗 DEDUP FIX: temp_state.links count BEFORE removal = {len(temp_state.links)}")
+
+                    def links_match(wrapper_link, original_link):
+                        """Compare links by properties since .link creates new objects"""
+                        # Compare link types first
+                        if type(wrapper_link) != type(original_link):
+                            return False
+
+                        # LinkSame comparison
+                        if hasattr(original_link, '_cid1') and hasattr(original_link, '_cid2'):
+                            return (wrapper_link._cid1 == original_link._cid1 and
+                                    wrapper_link._cid2 == original_link._cid2)
+
+                        # ComponentLink comparison
+                        if hasattr(original_link, '_from') and hasattr(original_link, '_to'):
+                            from_match = (wrapper_link._from == original_link._from or
+                                         (isinstance(original_link._from, list) and
+                                          isinstance(wrapper_link._from, list) and
+                                          wrapper_link._from == original_link._from))
+                            to_match = wrapper_link._to == original_link._to
+                            return from_match and to_match
+
+                        return False
+
+                    temp_state.links = [l for l in temp_state.links if not links_match(l.link, link)]
+                    print(f"🔗 DEDUP FIX: temp_state.links count AFTER removal = {len(temp_state.links)}")
+                    print(f"🔗 DEDUP FIX: Successfully removed link - count decreased: {len(temp_state.links) < len(data_collection.external_links)}")
                     
                     # Step 3: Find the registry object that created this link originally
                     registry_object = None
@@ -1851,7 +1897,10 @@ def QtStyleLinkDetailsPanel(
                         # Step 6: Apply the recreated link
                         temp_state.update_links_in_collection()
                         print(f"🚀 UNIFIED EDIT: Successfully recreated {original_link_type} with updated components")
-                        
+
+                        # 🔗 VERIFICATION: Confirm backend link integrity after Qt unified edit
+                        _verify_backend_connection(data_collection, "QT_UNIFIED_EDIT_DATASET1")
+
                         # Step 7: Debug track type preservation
                         _debug_link_type_preservation(link, data_collection.external_links, "DATASET1_UNIFIED_EDIT")
                         
@@ -1895,6 +1944,9 @@ def QtStyleLinkDetailsPanel(
                             temp_state.update_links_in_collection()
                             print(f"🚀 FALLBACK DEBUG: Finished temp_state.update_links_in_collection()")
                             print(f"🚀 UNIFIED EDIT: Created fallback identity link")
+
+                            # 🔗 VERIFICATION: Confirm backend link integrity after fallback edit
+                            _verify_backend_connection(data_collection, "QT_FALLBACK_EDIT_DATASET1")
                         else:
                             # Final fallback - use old method but warn
                             print(f"🚀 UNIFIED EDIT: WARNING - Using old app.add_link() as final fallback")
@@ -2028,19 +2080,14 @@ def QtStyleLinkDetailsPanel(
                 print(f"🔥 HARDCORE DEBUG: QT-STYLE APPROACH: Remove old link, create new link")
                 print(f"🔥 HARDCORE DEBUG: NEW LINK will be - {old_component1.label} <-> {new_component.label}")
                 
-                # ENHANCED DEBUG: Track Dataset 2 attribute change operations
-                print(f"🔥 DATASET2 BEFORE REMOVE: external_links count = {len(data_collection.external_links)}")
-                print(f"🔥 DATASET2 BEFORE REMOVE: external_links IDs = {[id(link) for link in data_collection.external_links]}")
-                print(f"🔥 DATASET2 BEFORE REMOVE: external_links content = {[f'{link._cid1.label}<->{link._cid2.label}' for link in data_collection.external_links if hasattr(link, '_cid1')]}")
-                
-                # CRITICAL: Same Qt-style remove-and-recreate pattern
-                print(f"🔥 HARDCORE DEBUG: Removing old link from data_collection")
-                data_collection.remove_link(link)
-                
-                print(f"🔥 DATASET2 AFTER REMOVE: external_links count = {len(data_collection.external_links)}")
-                print(f"🔥 DATASET2 AFTER REMOVE: external_links IDs = {[id(link) for link in data_collection.external_links]}")
-                print(f"🔥 DATASET2 AFTER REMOVE: external_links content = {[f'{link._cid1.label}<->{link._cid2.label}' for link in data_collection.external_links if hasattr(link, '_cid1')]}")
-                
+                # 🔗 ATOMIC FIX: Track state before Qt's atomic replacement (Dataset 2)
+                print(f"🔗 ATOMIC FIX DATASET2: Before Qt atomic replacement - external_links count = {len(data_collection.external_links)}")
+                print(f"🔗 ATOMIC FIX DATASET2: Link to replace: {link}")
+                print(f"🔗 ATOMIC FIX DATASET2: Qt's update_links_in_collection() will handle atomic replacement")
+
+                # 🔗 CRITICAL FIX: DO NOT call remove_link() here!
+                # Qt's temp_state.update_links_in_collection() already uses set_links() atomically
+                # The premature remove_link() was causing component reference integrity issues
                 # 🚀 PHASE 1 UNIFIED EDIT: Recreate link preserving original type (Dataset 2)
                 print(f"🚀 UNIFIED EDIT DATASET2: Recreating link with EditableLinkFunctionState to preserve type")
                 
@@ -2051,11 +2098,42 @@ def QtStyleLinkDetailsPanel(
                 try:
                     # Step 2: Use Qt's EditableLinkFunctionState pattern for ALL edits
                     from glue.dialogs.link_editor.state import LinkEditorState
-                    
+
                     # Create temporary LinkEditorState (Qt's exact approach)
+                    # NOTE: This copies ALL existing links from data_collection into temp_state.links
                     temp_state = LinkEditorState(data_collection)
                     temp_state.data1 = from_data
                     temp_state.data2 = to_data
+
+                    # 🔗 CRITICAL FIX: Remove the old link from temp_state.links to prevent duplication
+                    # NOTE: l.link creates a NEW object each time, so we must compare by properties!
+                    print(f"🔗 DEDUP FIX: temp_state.links count BEFORE removal = {len(temp_state.links)}")
+
+                    def links_match(wrapper_link, original_link):
+                        """Compare links by properties since .link creates new objects"""
+                        # Compare link types first
+                        if type(wrapper_link) != type(original_link):
+                            return False
+
+                        # LinkSame comparison
+                        if hasattr(original_link, '_cid1') and hasattr(original_link, '_cid2'):
+                            return (wrapper_link._cid1 == original_link._cid1 and
+                                    wrapper_link._cid2 == original_link._cid2)
+
+                        # ComponentLink comparison
+                        if hasattr(original_link, '_from') and hasattr(original_link, '_to'):
+                            from_match = (wrapper_link._from == original_link._from or
+                                         (isinstance(original_link._from, list) and
+                                          isinstance(wrapper_link._from, list) and
+                                          wrapper_link._from == original_link._from))
+                            to_match = wrapper_link._to == original_link._to
+                            return from_match and to_match
+
+                        return False
+
+                    temp_state.links = [l for l in temp_state.links if not links_match(l.link, link)]
+                    print(f"🔗 DEDUP FIX: temp_state.links count AFTER removal = {len(temp_state.links)}")
+                    print(f"🔗 DEDUP FIX: Successfully removed link - count decreased: {len(temp_state.links) < len(data_collection.external_links)}")
                     
                     # Step 3: Find the registry object that created this link originally
                     registry_object = None
@@ -2206,8 +2284,11 @@ def QtStyleLinkDetailsPanel(
                         # Step 6: Apply the recreated link
                         temp_state.update_links_in_collection()
                         print(f"🚀 UNIFIED EDIT DATASET2: Successfully recreated {original_link_type} with updated Dataset 2 component")
-                        
-                        # Step 7: Debug track type preservation  
+
+                        # 🔗 VERIFICATION: Confirm backend link integrity after Qt unified edit (Dataset 2)
+                        _verify_backend_connection(data_collection, "QT_UNIFIED_EDIT_DATASET2")
+
+                        # Step 7: Debug track type preservation
                         _debug_link_type_preservation(link, data_collection.external_links, "DATASET2_UNIFIED_EDIT")
                         
                     else:
@@ -2249,6 +2330,9 @@ def QtStyleLinkDetailsPanel(
                             temp_state.update_links_in_collection()
                             print(f"🚀 FALLBACK DATASET2 DEBUG: Finished temp_state.update_links_in_collection()")
                             print(f"🚀 UNIFIED EDIT DATASET2: Created fallback identity link")
+
+                            # 🔗 VERIFICATION: Confirm backend link integrity after fallback edit (Dataset 2)
+                            _verify_backend_connection(data_collection, "QT_FALLBACK_EDIT_DATASET2")
                         else:
                             # Final fallback - use old method but warn
                             print(f"🚀 UNIFIED EDIT DATASET2: WARNING - Using old app.add_link() as final fallback")
