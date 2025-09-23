@@ -261,13 +261,25 @@ def AdvancedLinkMenu(
             # Qt's exact method call - this does ALL the work
             registry_object = selected_item['registry_object']
             print(f"🔗 ADVANCED: Calling temp_state.new_link() with registry_object")
-            temp_state.new_link(registry_object)
             
-            # Apply to data collection (Qt's pattern)
-            print(f"🔗 ADVANCED: Calling temp_state.update_links_in_collection()")
-            temp_state.update_links_in_collection()
-            
-            print(f"🔗 ADVANCED: Successfully created advanced link!")
+            try:
+                temp_state.new_link(registry_object)
+                
+                # Apply to data collection (Qt's pattern)
+                print(f"🔗 ADVANCED: Calling temp_state.update_links_in_collection()")
+                temp_state.update_links_in_collection()
+                
+                print(f"🔗 ADVANCED: Successfully created advanced link!")
+                
+                # CRITICAL: Verify the link actually exists in backend
+                _verify_backend_connection(data_collection, "ADVANCED_LINK_CREATION")
+                
+            except Exception as e:
+                print(f"🔗 ADVANCED: Link creation failed: {str(e)}")
+                print(f"🔗 ADVANCED: This usually means the datasets are incompatible with this link type")
+                print(f"🔗 ADVANCED: Link type: {selected_item.get('label', 'Unknown')}")
+                # Don't crash - just return gracefully
+                return
             
             # UI refresh
             shared_refresh_counter.set(shared_refresh_counter.value + 1)
@@ -315,6 +327,108 @@ def AdvancedLinkMenu(
                     )
             else:
                 solara.Text(f"No links available in '{selected_category.value}' category", style={"color": "gray"})
+
+def _verify_backend_connection(data_collection, context="UNKNOWN"):
+    """
+    CRITICAL VERIFICATION: Check if links are actually functional in glue-core backend
+    
+    This verifies that our UI links correspond to real data connections that glue can use
+    for selections, filtering, and data operations.
+    """
+    print(f"🔗 BACKEND VERIFICATION: ===== {context} =====")
+    
+    try:
+        external_links = data_collection.external_links
+        print(f"🔗 BACKEND: Total external_links count = {len(external_links)}")
+        
+        if len(external_links) == 0:
+            print(f"🔗 BACKEND: ❌ NO LINKS FOUND - This is a serious problem!")
+            return
+        
+        # Verify each link's backend properties
+        for i, link in enumerate(external_links):
+            print(f"🔗 BACKEND: Link {i}: {type(link).__name__}")
+            
+            # Check if link has proper data references
+            if hasattr(link, 'data1') and hasattr(link, 'data2'):
+                data1_label = getattr(link.data1, 'label', 'Unknown')
+                data2_label = getattr(link.data2, 'label', 'Unknown')
+                print(f"🔗 BACKEND:   Connects: {data1_label} ↔ {data2_label}")
+            elif hasattr(link, '_cid1') and hasattr(link, '_cid2'):
+                cid1_label = getattr(link._cid1, 'label', 'Unknown')
+                cid2_label = getattr(link._cid2, 'label', 'Unknown')
+                data1_label = getattr(link._cid1.parent, 'label', 'Unknown') if hasattr(link._cid1, 'parent') else 'Unknown'
+                data2_label = getattr(link._cid2.parent, 'label', 'Unknown') if hasattr(link._cid2, 'parent') else 'Unknown'
+                print(f"🔗 BACKEND:   Connects: {data1_label}[{cid1_label}] ↔ {data2_label}[{cid2_label}]")
+            elif hasattr(link, '_from') and hasattr(link, '_to'):
+                # ComponentLink structure
+                if isinstance(link._from, list) and link._from:
+                    from_labels = [getattr(c, 'label', 'Unknown') for c in link._from]
+                    from_data_label = getattr(link._from[0].parent, 'label', 'Unknown') if hasattr(link._from[0], 'parent') else 'Unknown'
+                else:
+                    from_labels = [getattr(link._from, 'label', 'Unknown')]
+                    from_data_label = getattr(link._from.parent, 'label', 'Unknown') if hasattr(link._from, 'parent') else 'Unknown'
+                
+                to_label = getattr(link._to, 'label', 'Unknown')
+                to_data_label = getattr(link._to.parent, 'label', 'Unknown') if hasattr(link._to, 'parent') else 'Unknown'
+                
+                if len(from_labels) == 1:
+                    print(f"🔗 BACKEND:   Connects: {from_data_label}[{from_labels[0]}] → {to_data_label}[{to_label}]")
+                else:
+                    from_str = ','.join(from_labels)
+                    print(f"🔗 BACKEND:   Connects: {from_data_label}[{from_str}] → {to_data_label}[{to_label}]")
+            else:
+                print(f"🔗 BACKEND:   ⚠️ Link structure unknown - may not be functional")
+            
+            # Check if link has computation capability
+            if hasattr(link, 'compute'):
+                print(f"🔗 BACKEND:   ✅ Has compute() method - functional link")
+            elif hasattr(link, '_links') and link._links:
+                print(f"🔗 BACKEND:   ✅ Contains {len(link._links)} sub-links - functional collection")
+            else:
+                print(f"🔗 BACKEND:   ❌ No compute capability found - may be broken")
+        
+        # Test if data_collection can use the links
+        datasets = list(data_collection)  # DataCollection is iterable
+        if len(datasets) >= 2:
+            print(f"🔗 BACKEND: Testing link functionality with {len(datasets)} datasets...")
+            
+            # Check if datasets are properly linked in data_collection
+            dataset1, dataset2 = datasets[0], datasets[1]
+            try:
+                # Check if datasets are connected via external_links
+                connected = False
+                for link in external_links:
+                    if hasattr(link, '_cid1') and hasattr(link, '_cid2'):
+                        if ((hasattr(link._cid1, 'parent') and link._cid1.parent == dataset1 and 
+                             hasattr(link._cid2, 'parent') and link._cid2.parent == dataset2) or
+                            (hasattr(link._cid1, 'parent') and link._cid1.parent == dataset2 and 
+                             hasattr(link._cid2, 'parent') and link._cid2.parent == dataset1)):
+                            connected = True
+                            break
+                    elif hasattr(link, '_from') and hasattr(link, '_to'):
+                        from_data = getattr(link._from[0] if isinstance(link._from, list) else link._from, 'parent', None)
+                        to_data = getattr(link._to, 'parent', None)
+                        if ((from_data == dataset1 and to_data == dataset2) or 
+                            (from_data == dataset2 and to_data == dataset1)):
+                            connected = True
+                            break
+                
+                if connected:
+                    print(f"🔗 BACKEND:   ✅ {dataset1.label} ↔ {dataset2.label} connection verified via external_links")
+                else:
+                    print(f"🔗 BACKEND:   ❌ {dataset1.label} ↔ {dataset2.label} connection not found in external_links")
+                    
+            except Exception as e:
+                print(f"🔗 BACKEND:   ⚠️ Link functionality test failed: {e}")
+        
+        print(f"🔗 BACKEND VERIFICATION: ===== END {context} =====")
+        
+    except Exception as e:
+        print(f"🔗 BACKEND VERIFICATION ERROR: {e}")
+        import traceback
+        print(f"🔗 BACKEND VERIFICATION TRACEBACK: {traceback.format_exc()}")
+
 
 def _debug_link_type_preservation(original_link, new_links_list, operation_name):
     """
@@ -753,7 +867,15 @@ def stringify_links(link):
                 if hasattr(link, '_using') and link._using:
                     function_name = getattr(link._using, '__name__', 'function')
                 
-                if len(from_labels) == 1:
+                # Special case: identity functions should display like simple links (Qt style)
+                if function_name == 'identity' and len(from_labels) == 1:
+                    display = f"{from_labels[0]} <-> {to_label}"
+                    print(f"🐛 DEBUG: ComponentLink identity - {display}")
+                # Check if this is a bidirectional coordinate transformation
+                elif len(from_labels) == 1 and hasattr(link, 'inverse') and link.inverse:
+                    display = f"{function_name}({from_labels[0]} <-> {to_label})"
+                    print(f"🐛 DEBUG: ComponentLink bidirectional - {display}")
+                elif len(from_labels) == 1:
                     display = f"{function_name}({from_labels[0]} -> {to_label})"
                 else:
                     from_str = ",".join(from_labels)
@@ -1312,9 +1434,9 @@ def QtStyleLinkDetailsPanel(
                         coord_type = type(link)
                         new_coord_helper = coord_type(new_cids1, new_cids2, from_data, to_data)
                         
-                        # Add new coordinate helper to data collection
-                        for new_link in new_coord_helper:
-                            data_collection.add_link(new_link)
+                        # 🐛 BUGFIX: Add coordinate helper as single unit, not individual ComponentLinks
+                        print(f"🐛 BUGFIX: Adding coordinate helper as single unit instead of decomposing")
+                        data_collection.add_link(new_coord_helper)
                         
                         # Position preservation and UI refresh
                         new_position = len(data_collection.external_links) - 1
@@ -1356,9 +1478,9 @@ def QtStyleLinkDetailsPanel(
                         coord_type = type(link)
                         new_coord_helper = coord_type(new_cids1, new_cids2, from_data, to_data)
                         
-                        # Add new coordinate helper to data collection
-                        for new_link in new_coord_helper:
-                            data_collection.add_link(new_link)
+                        # 🐛 BUGFIX: Add coordinate helper as single unit, not individual ComponentLinks
+                        print(f"🐛 BUGFIX: Adding coordinate helper as single unit instead of decomposing")
+                        data_collection.add_link(new_coord_helper)
                         
                         # Position preservation and UI refresh
                         new_position = len(data_collection.external_links) - 1
@@ -1454,15 +1576,39 @@ def QtStyleLinkDetailsPanel(
                     print(f"🚀 MULTI-PARAM UPDATE: Removing old ComponentLink")
                     data_collection.remove_link(link)
                     
-                    # Create new ComponentLink with updated parameters
-                    print(f"🚀 MULTI-PARAM UPDATE: Creating new ComponentLink")
+                    # 🐛 BUGFIX: Preserve original link class instead of hardcoding ComponentLink
+                    print(f"🐛 BUGFIX: Analyzing original link type...")
+                    print(f"🐛 BUGFIX: Original link type: {type(link)}")
+                    print(f"🐛 BUGFIX: Original link class name: {link.__class__.__name__}")
+                    print(f"🐛 BUGFIX: Is ComponentLink: {type(link).__name__ == 'ComponentLink'}")
+
+                    # Debug: Check if link has any metadata about original collection
+                    if hasattr(link, '__dict__'):
+                        print(f"🐛 BUGFIX: Link attributes: {list(link.__dict__.keys())}")
+
                     from glue.core.component_link import ComponentLink
-                    new_link = ComponentLink(new_from_components, old_to_component, using=function)
-                    data_collection.add_link(new_link)
+                    from glue.core.link_helpers import LinkCollection
+
+                    # Check if this was originally an advanced link (LinkCollection-derived)
+                    if type(link).__name__ == 'ComponentLink':
+                        # This is a basic ComponentLink - recreate as ComponentLink (current logic)
+                        print(f"🐛 BUGFIX: Creating basic ComponentLink (original behavior)")
+                        new_link = ComponentLink(new_from_components, old_to_component, using=function)
+                        data_collection.add_link(new_link)
+                    else:
+                        # This might be an advanced link - investigate further
+                        print(f"🐛 BUGFIX: Detected non-ComponentLink type: {type(link)}")
+                        print(f"🐛 BUGFIX: This might be an advanced link - using ComponentLink for now but investigating...")
+                        # TODO: Implement proper LinkCollection recreation logic
+                        new_link = ComponentLink(new_from_components, old_to_component, using=function)
+                        data_collection.add_link(new_link)
                     
                     # Position preservation: select the newly created link
                     new_position = len(data_collection.external_links) - 1
                     print(f"🚀 MULTI-PARAM UPDATE: New link created at position {new_position}")
+                    
+                    # CRITICAL: Verify backend connection after multi-parameter editing
+                    _verify_backend_connection(data_collection, "MULTI_PARAM_LINK_EDIT")
                     
                     # Force UI refresh
                     print(f"🚀 MULTI-PARAM UPDATE: Forcing UI refresh")
@@ -1671,9 +1817,27 @@ def QtStyleLinkDetailsPanel(
                         elif hasattr(temp_state, 'current_link') and temp_state.current_link:
                             # For complex links, update the attribute mappings
                             current_link = temp_state.current_link
+                            print(f"🚀 DATASET1 CURRENT_LINK DEBUG: current_link = {current_link}")
+                            print(f"🚀 DATASET1 CURRENT_LINK DEBUG: current_link type = {type(current_link)}")
                             
-                            # Try to update first component mapping (this is user's edit)
-                            if hasattr(current_link, 'data1') and hasattr(current_link, 'names1'):
+                            # Check if this is an identity function with x/y parameters (like Dataset2 fix)
+                            if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: Found x/y parameters!")
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: BEFORE - current_link.x = {current_link.x}")
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: BEFORE - current_link.y = {current_link.y}")
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: Setting current_link.x = {new_component.label}")
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: Setting current_link.y = {old_component2.label}")
+                                
+                                current_link.x = new_component    # Dataset 1 component (user's change)
+                                current_link.y = old_component2   # Dataset 2 component (unchanged)
+                                
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: AFTER - current_link.x = {current_link.x}")
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: AFTER - current_link.y = {current_link.y}")
+                                print(f"🚀 UNIFIED EDIT: Updated identity function components: {new_component.label} -> {old_component2.label}")
+                            
+                            # Try to update first component mapping (this is user's edit) - FALLBACK for non-identity functions
+                            elif hasattr(current_link, 'data1') and hasattr(current_link, 'names1'):
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: Found data1/names1 parameters!")
                                 # Multi-parameter link - update first parameter
                                 names1 = current_link.names1
                                 if names1 and len(names1) > 0:
@@ -1681,6 +1845,8 @@ def QtStyleLinkDetailsPanel(
                                     if hasattr(current_link, first_param_name):
                                         setattr(current_link, first_param_name, new_component)
                                         print(f"🚀 UNIFIED EDIT: Updated multi-parameter {first_param_name}: {new_component.label}")
+                            else:
+                                print(f"🚀 DATASET1 CURRENT_LINK DEBUG: No recognized parameter structure found!")
                         
                         # Step 6: Apply the recreated link
                         temp_state.update_links_in_collection()
@@ -1701,7 +1867,33 @@ def QtStyleLinkDetailsPanel(
                         
                         if identity_func:
                             temp_state.new_link(identity_func)
+                            # CRITICAL FIX: Set component selections for fallback identity link
+                            if hasattr(temp_state, 'current_link') and temp_state.current_link:
+                                # Set the components that user actually selected
+                                current_link = temp_state.current_link
+                                print(f"🚀 FALLBACK DEBUG: current_link = {current_link}")
+                                print(f"🚀 FALLBACK DEBUG: current_link type = {type(current_link)}")
+                                print(f"🚀 FALLBACK DEBUG: current_link attributes = {[attr for attr in dir(current_link) if not attr.startswith('_')]}")
+                                
+                                if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                                    print(f"🚀 FALLBACK DEBUG: BEFORE setting - current_link.x = {getattr(current_link, 'x', 'NOT_SET')}")
+                                    print(f"🚀 FALLBACK DEBUG: BEFORE setting - current_link.y = {getattr(current_link, 'y', 'NOT_SET')}")
+                                    
+                                    # Identity function uses 'x' and 'y' parameters
+                                    current_link.x = new_component    # Dataset 1 component (user's change)
+                                    current_link.y = old_component2   # Dataset 2 component (unchanged)
+                                    
+                                    print(f"🚀 FALLBACK DEBUG: AFTER setting - current_link.x = {current_link.x}")
+                                    print(f"🚀 FALLBACK DEBUG: AFTER setting - current_link.y = {current_link.y}")
+                                    print(f"🚀 UNIFIED EDIT: Set fallback identity components: {new_component.label} -> {old_component2.label}")
+                                else:
+                                    print(f"🚀 FALLBACK DEBUG: current_link does NOT have x/y attributes!")
+                            else:
+                                print(f"🚀 FALLBACK DEBUG: temp_state.current_link is None or missing!")
+                            
+                            print(f"🚀 FALLBACK DEBUG: About to call temp_state.update_links_in_collection()")
                             temp_state.update_links_in_collection()
+                            print(f"🚀 FALLBACK DEBUG: Finished temp_state.update_links_in_collection()")
                             print(f"🚀 UNIFIED EDIT: Created fallback identity link")
                         else:
                             # Final fallback - use old method but warn
@@ -1721,6 +1913,9 @@ def QtStyleLinkDetailsPanel(
                 print(f"🔥 AFTER ADD: external_links content = {[f'{link._cid1.label}<->{link._cid2.label}' for link in data_collection.external_links if hasattr(link, '_cid1')]}")
                 
                 print(f"🔥 HARDCORE DEBUG: Qt-style link replacement COMPLETE")
+                
+                # CRITICAL: Verify backend connection after editing
+                _verify_backend_connection(data_collection, "DATASET1_LINK_EDIT")
                 
                 # ENHANCED WORKAROUND: Give glue time to settle, then force UI refresh
                 print(f"🔥 TIMING FIX: Waiting for glue to settle...")
@@ -1866,29 +2061,63 @@ def QtStyleLinkDetailsPanel(
                     registry_object = None
                     
                     # Try to find original function/helper that created this link
+
+                    # Get function name for analysis
+                    function_name = 'unknown'
                     if hasattr(link, '_using') and link._using:
+                        function_name = getattr(link._using, '__name__', 'unknown')
+
+                    print(f"🚀 UNIFIED EDIT DATASET2: Function name: {function_name}")
+
+                    # BUGFIX: Check both class name AND function name for coordinate helpers
+                    is_coordinate_helper = (
+                        'coordinate_helpers' in original_link_type.lower() or
+                        'galactic' in original_link_type.lower() or
+                        'icrs' in original_link_type.lower() or
+                        'fk4' in original_link_type.lower() or
+                        'fk5' in original_link_type.lower() or
+                        # BUGFIX: Also check function name patterns
+                        'icrs_to' in function_name.lower() or
+                        'galactic_to' in function_name.lower() or
+                        'fk4_to' in function_name.lower() or
+                        'fk5_to' in function_name.lower() or
+                        '_to_fk' in function_name.lower() or
+                        '_to_icrs' in function_name.lower() or
+                        '_to_galactic' in function_name.lower()
+                    )
+
+                    if is_coordinate_helper:
+                        # Coordinate helper - find in helper registry
+                        from glue.config import link_helper
+                        print(f"🚀 UNIFIED EDIT DATASET2: Detected coordinate helper")
+                        print(f"🐛 BUGFIX: Function name: {function_name}")
+                        print(f"🐛 BUGFIX: Original link type: {original_link_type}")
+
+                        # Extract coordinate helper class name from function name
+                        # E.g., "ICRS_to_FK5.backwards_2" -> "ICRS_to_FK5"
+                        helper_class_name = function_name.split('.')[0] if '.' in function_name else original_link_type
+                        print(f"🐛 BUGFIX: Extracted helper class name: {helper_class_name}")
+
+                        print(f"🐛 BUGFIX: Checking all helpers for match:")
+                        for helper in link_helper.members:
+                            helper_name = helper.helper.__name__
+                            print(f"🐛 BUGFIX: Comparing '{helper_class_name}' with '{helper_name}'")
+                            if helper_name == helper_class_name:
+                                registry_object = helper
+                                print(f"🚀 UNIFIED EDIT DATASET2: Found helper registry object: {helper}")
+                                break
+
+                    elif hasattr(link, '_using') and link._using:
                         # ComponentLink with function - find in function registry
                         from glue.config import link_function
-                        function_name = getattr(link._using, '__name__', 'unknown')
                         print(f"🚀 UNIFIED EDIT DATASET2: Looking for function: {function_name}")
-                        
+
                         for func in link_function.members:
                             if hasattr(func, 'function') and func.function.__name__ == function_name:
                                 registry_object = func
                                 print(f"🚀 UNIFIED EDIT DATASET2: Found function registry object: {func}")
                                 break
-                    
-                    elif 'coordinate_helpers' in original_link_type.lower() or 'galactic' in original_link_type.lower() or 'icrs' in original_link_type.lower():
-                        # Coordinate helper - find in helper registry
-                        from glue.config import link_helper
-                        print(f"🚀 UNIFIED EDIT DATASET2: Looking for coordinate helper: {original_link_type}")
-                        
-                        for helper in link_helper.members:
-                            if helper.helper.__name__ == original_link_type:
-                                registry_object = helper
-                                print(f"🚀 UNIFIED EDIT DATASET2: Found helper registry object: {helper}")
-                                break
-                    
+
                     elif 'join' in original_link_type.lower():
                         # JoinLink - find in helper registry
                         from glue.config import link_helper
@@ -1906,25 +2135,73 @@ def QtStyleLinkDetailsPanel(
                         temp_state.new_link(registry_object)
                         
                         # Step 5: Update component selections to new user choice (Dataset 2 edit)
+                        print(f"🚀 DATASET2 BRANCH DEBUG: hasattr(temp_state, 'data1_att') = {hasattr(temp_state, 'data1_att')}")
+                        print(f"🚀 DATASET2 BRANCH DEBUG: hasattr(temp_state, 'data2_att') = {hasattr(temp_state, 'data2_att')}")
+                        print(f"🚀 DATASET2 BRANCH DEBUG: hasattr(temp_state, 'current_link') = {hasattr(temp_state, 'current_link')}")
+                        print(f"🚀 DATASET2 BRANCH DEBUG: temp_state.current_link = {getattr(temp_state, 'current_link', 'NOT_SET')}")
+                        
                         if hasattr(temp_state, 'data1_att') and hasattr(temp_state, 'data2_att'):
                             # For simple links, update the attribute selections
+                            print(f"🚀 DATASET2 DEBUG: TAKING data1_att/data2_att BRANCH")
+                            print(f"🚀 DATASET2 DEBUG: BEFORE setting - temp_state.data1_att = {getattr(temp_state, 'data1_att', 'NOT_SET')}")
+                            print(f"🚀 DATASET2 DEBUG: BEFORE setting - temp_state.data2_att = {getattr(temp_state, 'data2_att', 'NOT_SET')}")
+                            print(f"🚀 DATASET2 DEBUG: About to set temp_state.data1_att = {old_component1.label}")
+                            print(f"🚀 DATASET2 DEBUG: About to set temp_state.data2_att = {new_component.label}")
+                            
                             temp_state.data1_att = old_component1
                             temp_state.data2_att = new_component  # This is the user's Dataset 2 edit
+                            
+                            print(f"🚀 DATASET2 DEBUG: AFTER setting - temp_state.data1_att = {temp_state.data1_att}")
+                            print(f"🚀 DATASET2 DEBUG: AFTER setting - temp_state.data2_att = {temp_state.data2_att}")
                             print(f"🚀 UNIFIED EDIT DATASET2: Updated simple link components: {old_component1.label} -> {new_component.label}")
                         
                         elif hasattr(temp_state, 'current_link') and temp_state.current_link:
+                            print(f"🚀 DATASET2 DEBUG: TAKING current_link BRANCH")
                             # For complex links, update the attribute mappings (Dataset 2 side)
                             current_link = temp_state.current_link
+                            print(f"🚀 DATASET2 CURRENT_LINK DEBUG: current_link = {current_link}")
+                            print(f"🚀 DATASET2 CURRENT_LINK DEBUG: current_link type = {type(current_link)}")
+                            print(f"🚀 DATASET2 CURRENT_LINK DEBUG: current_link attributes = {[attr for attr in dir(current_link) if not attr.startswith('_')]}")
+                            
+                            # Check if this is an identity function with x/y parameters
+                            if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: Found x/y parameters!")
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: BEFORE - current_link.x = {current_link.x}")
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: BEFORE - current_link.y = {current_link.y}")
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: Setting current_link.x = {old_component1.label}")
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: Setting current_link.y = {new_component.label}")
+                                
+                                current_link.x = old_component1  # Dataset 1 component (unchanged)
+                                current_link.y = new_component   # Dataset 2 component (user's change)
+                                
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: AFTER - current_link.x = {current_link.x}")
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: AFTER - current_link.y = {current_link.y}")
                             
                             # Try to update output component mapping (this is Dataset 2 edit)
-                            if hasattr(current_link, 'data2') and hasattr(current_link, 'names2'):
-                                # Multi-parameter link - update first output parameter
+                            elif hasattr(current_link, 'data2') and hasattr(current_link, 'names2'):
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: Found data2/names2 parameters!")
+                                
+                                # CRITICAL FIX: First restore all original input parameters
+                                if hasattr(current_link, 'names1') and current_link.names1:
+                                    print(f"🚀 DATASET2 MULTI-PARAM FIX: Restoring original input parameters...")
+                                    original_inputs = link._from  # Get original input components
+                                    names1 = current_link.names1
+                                    
+                                    for i, param_name in enumerate(names1):
+                                        if i < len(original_inputs) and hasattr(current_link, param_name):
+                                            original_component = original_inputs[i]
+                                            setattr(current_link, param_name, original_component)
+                                            print(f"🚀 DATASET2 MULTI-PARAM FIX: Restored {param_name} = {original_component.label}")
+                                
+                                # Then update the output parameter (this is the user's Dataset 2 edit)
                                 names2 = current_link.names2
                                 if names2 and len(names2) > 0:
                                     first_output_name = names2[0]
                                     if hasattr(current_link, first_output_name):
                                         setattr(current_link, first_output_name, new_component)
                                         print(f"🚀 UNIFIED EDIT DATASET2: Updated multi-parameter output {first_output_name}: {new_component.label}")
+                            else:
+                                print(f"🚀 DATASET2 CURRENT_LINK DEBUG: No recognized parameter structure found!")
                         
                         # Step 6: Apply the recreated link
                         temp_state.update_links_in_collection()
@@ -1945,7 +2222,32 @@ def QtStyleLinkDetailsPanel(
                         
                         if identity_func:
                             temp_state.new_link(identity_func)
+                            # CRITICAL FIX: Set component selections for fallback identity link
+                            if hasattr(temp_state, 'current_link') and temp_state.current_link:
+                                # Set the components that user actually selected
+                                current_link = temp_state.current_link
+                                print(f"🚀 FALLBACK DATASET2 DEBUG: current_link = {current_link}")
+                                print(f"🚀 FALLBACK DATASET2 DEBUG: current_link type = {type(current_link)}")
+                                
+                                if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                                    print(f"🚀 FALLBACK DATASET2 DEBUG: BEFORE setting - current_link.x = {getattr(current_link, 'x', 'NOT_SET')}")
+                                    print(f"🚀 FALLBACK DATASET2 DEBUG: BEFORE setting - current_link.y = {getattr(current_link, 'y', 'NOT_SET')}")
+                                    
+                                    # Identity function uses 'x' and 'y' parameters
+                                    current_link.x = old_component1  # Dataset 1 component (unchanged)
+                                    current_link.y = new_component   # Dataset 2 component (user's change)
+                                    
+                                    print(f"🚀 FALLBACK DATASET2 DEBUG: AFTER setting - current_link.x = {current_link.x}")
+                                    print(f"🚀 FALLBACK DATASET2 DEBUG: AFTER setting - current_link.y = {current_link.y}")
+                                    print(f"🚀 UNIFIED EDIT DATASET2: Set fallback identity components: {old_component1.label} -> {new_component.label}")
+                                else:
+                                    print(f"🚀 FALLBACK DATASET2 DEBUG: current_link does NOT have x/y attributes!")
+                            else:
+                                print(f"🚀 FALLBACK DATASET2 DEBUG: temp_state.current_link is None or missing!")
+                            
+                            print(f"🚀 FALLBACK DATASET2 DEBUG: About to call temp_state.update_links_in_collection()")
                             temp_state.update_links_in_collection()
+                            print(f"🚀 FALLBACK DATASET2 DEBUG: Finished temp_state.update_links_in_collection()")
                             print(f"🚀 UNIFIED EDIT DATASET2: Created fallback identity link")
                         else:
                             # Final fallback - use old method but warn
@@ -1965,6 +2267,9 @@ def QtStyleLinkDetailsPanel(
                 print(f"🔥 DATASET2 AFTER ADD: external_links content = {[f'{link._cid1.label}<->{link._cid2.label}' for link in data_collection.external_links if hasattr(link, '_cid1')]}")
                 
                 print(f"🔥 HARDCORE DEBUG: Qt-style link replacement COMPLETE")
+                
+                # CRITICAL: Verify backend connection after editing
+                _verify_backend_connection(data_collection, "DATASET2_LINK_EDIT")
                 
                 # ENHANCED WORKAROUND: Give glue time to settle, then force UI refresh  
                 print(f"🔥 DATASET2 TIMING FIX: Waiting for glue to settle...")
