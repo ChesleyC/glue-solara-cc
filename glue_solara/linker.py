@@ -1761,14 +1761,14 @@ def QtStyleLinkDetailsPanel(
                 # Qt's temp_state.update_links_in_collection() already uses set_links() atomically
                 # The premature remove_link() was causing component reference integrity issues
 
-                # 🚀 PHASE 1 UNIFIED EDIT: Recreate link preserving original type 
+                # 🚀 PHASE 1 UNIFIED EDIT: Recreate link preserving original type
                 # This fixes "magical switching" by maintaining link structure
                 print(f"🚀 UNIFIED EDIT: Recreating link with EditableLinkFunctionState to preserve type")
-                
+
                 # Step 1: Determine original link creation method
                 original_link_type = type(link).__name__
                 print(f"🚀 UNIFIED EDIT: Original link type: {original_link_type}")
-                
+
                 try:
                     # Step 2: Use Qt's EditableLinkFunctionState pattern for ALL edits
                     from glue.dialogs.link_editor.state import LinkEditorState
@@ -1780,32 +1780,24 @@ def QtStyleLinkDetailsPanel(
                     temp_state.data2 = to_data
 
                     # 🔗 CRITICAL FIX: Remove the old link from temp_state.links to prevent duplication
-                    # NOTE: l.link creates a NEW object each time, so we must compare by properties!
+                    # Use INDEX-BASED removal to avoid removing identical links
                     print(f"🔗 DEDUP FIX: temp_state.links count BEFORE removal = {len(temp_state.links)}")
 
-                    def links_match(wrapper_link, original_link):
-                        """Compare links by properties since .link creates new objects"""
-                        # Compare link types first
-                        if type(wrapper_link) != type(original_link):
-                            return False
+                    # Find the index of the link being edited using object identity
+                    original_index = None
+                    for i, l in enumerate(data_collection.external_links):
+                        if l is link:  # Object identity, not property comparison
+                            original_index = i
+                            print(f"🔗 INDEX-BASED DEDUP: Found link at index {i}")
+                            break
 
-                        # LinkSame comparison
-                        if hasattr(original_link, '_cid1') and hasattr(original_link, '_cid2'):
-                            return (wrapper_link._cid1 == original_link._cid1 and
-                                    wrapper_link._cid2 == original_link._cid2)
+                    # Remove by index (temp_state.links has same order as external_links)
+                    if original_index is not None and original_index < len(temp_state.links):
+                        removed_link = temp_state.links.pop(original_index)
+                        print(f"🔗 INDEX-BASED DEDUP: Removed link at index {original_index}")
+                    else:
+                        print(f"🔗 INDEX-BASED DEDUP: WARNING - Could not find link index!")
 
-                        # ComponentLink comparison
-                        if hasattr(original_link, '_from') and hasattr(original_link, '_to'):
-                            from_match = (wrapper_link._from == original_link._from or
-                                         (isinstance(original_link._from, list) and
-                                          isinstance(wrapper_link._from, list) and
-                                          wrapper_link._from == original_link._from))
-                            to_match = wrapper_link._to == original_link._to
-                            return from_match and to_match
-
-                        return False
-
-                    temp_state.links = [l for l in temp_state.links if not links_match(l.link, link)]
                     print(f"🔗 DEDUP FIX: temp_state.links count AFTER removal = {len(temp_state.links)}")
                     print(f"🔗 DEDUP FIX: Successfully removed link - count decreased: {len(temp_state.links) < len(data_collection.external_links)}")
                     
@@ -1840,13 +1832,24 @@ def QtStyleLinkDetailsPanel(
                         # JoinLink - find in helper registry
                         from glue.config import link_helper
                         print(f"🚀 UNIFIED EDIT: Looking for join helper")
-                        
+
                         for helper in link_helper.members:
                             if 'join' in helper.helper.__name__.lower():
                                 registry_object = helper
                                 print(f"🚀 UNIFIED EDIT: Found join registry object: {helper}")
                                 break
-                    
+
+                    elif 'linksame' in original_link_type.lower():
+                        # LinkSame - find in helper registry
+                        from glue.config import link_helper
+                        print(f"🚀 UNIFIED EDIT: Looking for LinkSame helper")
+
+                        for helper in link_helper.members:
+                            if helper.helper.__name__ == 'LinkSame':
+                                registry_object = helper
+                                print(f"🚀 UNIFIED EDIT: Found LinkSame registry object: {helper}")
+                                break
+
                     # Step 4: Recreate link using proper registry object
                     if registry_object:
                         print(f"🚀 UNIFIED EDIT: Recreating with registry object: {registry_object}")
@@ -1891,6 +1894,25 @@ def QtStyleLinkDetailsPanel(
                                     if hasattr(current_link, first_param_name):
                                         setattr(current_link, first_param_name, new_component)
                                         print(f"🚀 UNIFIED EDIT: Updated multi-parameter {first_param_name}: {new_component.label}")
+
+                            # FIX 3: Handle link_function multi-parameters for dataset1 (e.g., lengths_to_volume)
+                            elif hasattr(current_link, 'names1') and hasattr(current_link, 'names2'):
+                                print(f"🚀 DATASET1 LINK_FUNCTION MULTI-PARAM: Found names1/names2 parameters!")
+
+                                # For dataset1 edit, update the first input parameter (user's edit)
+                                if current_link.names1 and len(current_link.names1) > 0:
+                                    first_param_name = current_link.names1[0]
+                                    if hasattr(current_link, first_param_name):
+                                        setattr(current_link, first_param_name, new_component)
+                                        print(f"🚀 UNIFIED EDIT DATASET1: Updated link_function input {first_param_name}: {new_component.label}")
+
+                                # Preserve output parameter from original link
+                                if hasattr(link, '_to') and current_link.names2 and len(current_link.names2) > 0:
+                                    output_param_name = current_link.names2[0]
+                                    if hasattr(current_link, output_param_name):
+                                        setattr(current_link, output_param_name, link._to)
+                                        print(f"🚀 DATASET1 LINK_FUNCTION FIX: Preserved output {output_param_name} = {link._to.label}")
+
                             else:
                                 print(f"🚀 DATASET1 CURRENT_LINK DEBUG: No recognized parameter structure found!")
                         
@@ -2090,11 +2112,11 @@ def QtStyleLinkDetailsPanel(
                 # The premature remove_link() was causing component reference integrity issues
                 # 🚀 PHASE 1 UNIFIED EDIT: Recreate link preserving original type (Dataset 2)
                 print(f"🚀 UNIFIED EDIT DATASET2: Recreating link with EditableLinkFunctionState to preserve type")
-                
+
                 # Step 1: Determine original link creation method
                 original_link_type = type(link).__name__
                 print(f"🚀 UNIFIED EDIT DATASET2: Original link type: {original_link_type}")
-                
+
                 try:
                     # Step 2: Use Qt's EditableLinkFunctionState pattern for ALL edits
                     from glue.dialogs.link_editor.state import LinkEditorState
@@ -2106,32 +2128,24 @@ def QtStyleLinkDetailsPanel(
                     temp_state.data2 = to_data
 
                     # 🔗 CRITICAL FIX: Remove the old link from temp_state.links to prevent duplication
-                    # NOTE: l.link creates a NEW object each time, so we must compare by properties!
+                    # Use INDEX-BASED removal to avoid removing identical links
                     print(f"🔗 DEDUP FIX: temp_state.links count BEFORE removal = {len(temp_state.links)}")
 
-                    def links_match(wrapper_link, original_link):
-                        """Compare links by properties since .link creates new objects"""
-                        # Compare link types first
-                        if type(wrapper_link) != type(original_link):
-                            return False
+                    # Find the index of the link being edited using object identity
+                    original_index = None
+                    for i, l in enumerate(data_collection.external_links):
+                        if l is link:  # Object identity, not property comparison
+                            original_index = i
+                            print(f"🔗 INDEX-BASED DEDUP: Found link at index {i}")
+                            break
 
-                        # LinkSame comparison
-                        if hasattr(original_link, '_cid1') and hasattr(original_link, '_cid2'):
-                            return (wrapper_link._cid1 == original_link._cid1 and
-                                    wrapper_link._cid2 == original_link._cid2)
+                    # Remove by index (temp_state.links has same order as external_links)
+                    if original_index is not None and original_index < len(temp_state.links):
+                        removed_link = temp_state.links.pop(original_index)
+                        print(f"🔗 INDEX-BASED DEDUP: Removed link at index {original_index}")
+                    else:
+                        print(f"🔗 INDEX-BASED DEDUP: WARNING - Could not find link index!")
 
-                        # ComponentLink comparison
-                        if hasattr(original_link, '_from') and hasattr(original_link, '_to'):
-                            from_match = (wrapper_link._from == original_link._from or
-                                         (isinstance(original_link._from, list) and
-                                          isinstance(wrapper_link._from, list) and
-                                          wrapper_link._from == original_link._from))
-                            to_match = wrapper_link._to == original_link._to
-                            return from_match and to_match
-
-                        return False
-
-                    temp_state.links = [l for l in temp_state.links if not links_match(l.link, link)]
                     print(f"🔗 DEDUP FIX: temp_state.links count AFTER removal = {len(temp_state.links)}")
                     print(f"🔗 DEDUP FIX: Successfully removed link - count decreased: {len(temp_state.links) < len(data_collection.external_links)}")
                     
@@ -2200,13 +2214,24 @@ def QtStyleLinkDetailsPanel(
                         # JoinLink - find in helper registry
                         from glue.config import link_helper
                         print(f"🚀 UNIFIED EDIT DATASET2: Looking for join helper")
-                        
+
                         for helper in link_helper.members:
                             if 'join' in helper.helper.__name__.lower():
                                 registry_object = helper
                                 print(f"🚀 UNIFIED EDIT DATASET2: Found join registry object: {helper}")
                                 break
-                    
+
+                    elif 'linksame' in original_link_type.lower():
+                        # LinkSame - find in helper registry
+                        from glue.config import link_helper
+                        print(f"🚀 UNIFIED EDIT DATASET2: Looking for LinkSame helper")
+
+                        for helper in link_helper.members:
+                            if helper.helper.__name__ == 'LinkSame':
+                                registry_object = helper
+                                print(f"🚀 UNIFIED EDIT DATASET2: Found LinkSame registry object: {helper}")
+                                break
+
                     # Step 4: Recreate link using proper registry object
                     if registry_object:
                         print(f"🚀 UNIFIED EDIT DATASET2: Recreating with registry object: {registry_object}")
@@ -2258,19 +2283,19 @@ def QtStyleLinkDetailsPanel(
                             # Try to update output component mapping (this is Dataset 2 edit)
                             elif hasattr(current_link, 'data2') and hasattr(current_link, 'names2'):
                                 print(f"🚀 DATASET2 CURRENT_LINK DEBUG: Found data2/names2 parameters!")
-                                
+
                                 # CRITICAL FIX: First restore all original input parameters
                                 if hasattr(current_link, 'names1') and current_link.names1:
                                     print(f"🚀 DATASET2 MULTI-PARAM FIX: Restoring original input parameters...")
                                     original_inputs = link._from  # Get original input components
                                     names1 = current_link.names1
-                                    
+
                                     for i, param_name in enumerate(names1):
                                         if i < len(original_inputs) and hasattr(current_link, param_name):
                                             original_component = original_inputs[i]
                                             setattr(current_link, param_name, original_component)
                                             print(f"🚀 DATASET2 MULTI-PARAM FIX: Restored {param_name} = {original_component.label}")
-                                
+
                                 # Then update the output parameter (this is the user's Dataset 2 edit)
                                 names2 = current_link.names2
                                 if names2 and len(names2) > 0:
@@ -2278,6 +2303,27 @@ def QtStyleLinkDetailsPanel(
                                     if hasattr(current_link, first_output_name):
                                         setattr(current_link, first_output_name, new_component)
                                         print(f"🚀 UNIFIED EDIT DATASET2: Updated multi-parameter output {first_output_name}: {new_component.label}")
+
+                            # FIX 3: Handle link_function multi-parameters (e.g., lengths_to_volume)
+                            elif hasattr(current_link, 'names1') and hasattr(current_link, 'names2'):
+                                print(f"🚀 DATASET2 LINK_FUNCTION MULTI-PARAM: Found names1/names2 parameters!")
+
+                                # Restore all original input parameters
+                                if isinstance(link._from, list) and len(link._from) > 0:
+                                    print(f"🚀 DATASET2 LINK_FUNCTION FIX: Restoring {len(link._from)} input parameters...")
+                                    for i, param_name in enumerate(current_link.names1):
+                                        if i < len(link._from) and hasattr(current_link, param_name):
+                                            original_component = link._from[i]
+                                            setattr(current_link, param_name, original_component)
+                                            print(f"🚀 DATASET2 LINK_FUNCTION FIX: Restored {param_name} = {original_component.label}")
+
+                                # Update the output parameter (user's Dataset 2 edit)
+                                if current_link.names2 and len(current_link.names2) > 0:
+                                    output_param_name = current_link.names2[0]
+                                    if hasattr(current_link, output_param_name):
+                                        setattr(current_link, output_param_name, new_component)
+                                        print(f"🚀 UNIFIED EDIT DATASET2: Updated link_function output {output_param_name}: {new_component.label}")
+
                             else:
                                 print(f"🚀 DATASET2 CURRENT_LINK DEBUG: No recognized parameter structure found!")
                         
