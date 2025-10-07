@@ -1720,6 +1720,9 @@ def QtStyleLinkDetailsPanel(
                 else:
                     print(f"🔥 LINK EDIT: ComponentLink - current input = {link._from.label}")
                 print(f"🔥 LINK EDIT: ComponentLink - current output = {link._to.label}")
+            elif type(link).__name__ == 'JoinLink' and hasattr(link, 'cids1') and hasattr(link, 'cids2'):
+                print(f"🔥 LINK EDIT: JoinLink - current cids1 = {[c.label for c in link.cids1]}")
+                print(f"🔥 LINK EDIT: JoinLink - current cids2 = {[c.label for c in link.cids2]}")
             else:
                 print(f"🔥 LINK EDIT: Unknown link structure")
             
@@ -1744,6 +1747,14 @@ def QtStyleLinkDetailsPanel(
                         print(f"🔥 LINK EDIT: Using coordinate helper cids2[0]: {old_component2.label}")
                     else:
                         print(f"🔥 LINK EDIT: ERROR - Coordinate helper cids2 is empty")
+                        return
+                elif type(link).__name__ == 'JoinLink' and hasattr(link, 'cids2'):
+                    # JoinLink object - use first component from cids2 list
+                    if link.cids2:
+                        old_component2 = link.cids2[0]
+                        print(f"🔥 LINK EDIT: Using JoinLink cids2[0]: {old_component2.label}")
+                    else:
+                        print(f"🔥 LINK EDIT: ERROR - JoinLink cids2 is empty")
                         return
                 else:
                     print(f"🔥 LINK EDIT: ERROR - Cannot determine Dataset 2 attribute from link type {type(link)}")
@@ -2066,6 +2077,9 @@ def QtStyleLinkDetailsPanel(
                 else:
                     print(f"🔥 LINK EDIT: ComponentLink - current input = {link._from.label}")
                 print(f"🔥 LINK EDIT: ComponentLink - current output = {link._to.label}")
+            elif type(link).__name__ == 'JoinLink' and hasattr(link, 'cids1') and hasattr(link, 'cids2'):
+                print(f"🔥 LINK EDIT: JoinLink - current cids1 = {[c.label for c in link.cids1]}")
+                print(f"🔥 LINK EDIT: JoinLink - current cids2 = {[c.label for c in link.cids2]}")
             else:
                 print(f"🔥 LINK EDIT: Unknown link structure")
             
@@ -2092,6 +2106,14 @@ def QtStyleLinkDetailsPanel(
                         print(f"🔥 LINK EDIT: Using coordinate helper cids1[0]: {old_component1.label}")
                     else:
                         print(f"🔥 LINK EDIT: ERROR - Coordinate helper cids1 is empty")
+                        return
+                elif type(link).__name__ == 'JoinLink' and hasattr(link, 'cids1'):
+                    # JoinLink object - use first component from cids1 list
+                    if link.cids1:
+                        old_component1 = link.cids1[0]
+                        print(f"🔥 LINK EDIT: Using JoinLink cids1[0]: {old_component1.label}")
+                    else:
+                        print(f"🔥 LINK EDIT: ERROR - JoinLink cids1 is empty")
                         return
                 else:
                     print(f"🔥 LINK EDIT: ERROR - Cannot determine Dataset 1 attribute from link type {type(link)}")
@@ -2280,6 +2302,25 @@ def QtStyleLinkDetailsPanel(
                                 print(f"🚀 DATASET2 CURRENT_LINK DEBUG: AFTER - current_link.x = {current_link.x}")
                                 print(f"🚀 DATASET2 CURRENT_LINK DEBUG: AFTER - current_link.y = {current_link.y}")
                             
+                            # Special handling for JoinLink (has cids1/cids2, not _from/_to)
+                            elif type(link).__name__ == 'JoinLink' and hasattr(current_link, 'data2') and hasattr(current_link, 'names2'):
+                                print(f"🚀 DATASET2 JOINLINK DEBUG: Handling JoinLink parameter update")
+
+                                # JoinLink has single input/output in cids1/cids2 lists
+                                # For dataset2 edit, we update the output (cids2), keep input (cids1)
+                                if hasattr(link, 'cids1') and link.cids1:
+                                    # Restore original input parameter (dataset1 side)
+                                    input_param_name = current_link.names1[0] if current_link.names1 else None
+                                    if input_param_name and hasattr(current_link, input_param_name):
+                                        setattr(current_link, input_param_name, link.cids1[0])
+                                        print(f"🚀 DATASET2 JOINLINK: Restored input {input_param_name} = {link.cids1[0].label}")
+
+                                # Update output parameter (dataset2 side - user's change)
+                                output_param_name = current_link.names2[0] if current_link.names2 else None
+                                if output_param_name and hasattr(current_link, output_param_name):
+                                    setattr(current_link, output_param_name, new_component)
+                                    print(f"🚀 DATASET2 JOINLINK: Updated output {output_param_name} = {new_component.label}")
+
                             # Try to update output component mapping (this is Dataset 2 edit)
                             elif hasattr(current_link, 'data2') and hasattr(current_link, 'names2'):
                                 print(f"🚀 DATASET2 CURRENT_LINK DEBUG: Found data2/names2 parameters!")
