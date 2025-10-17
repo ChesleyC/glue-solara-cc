@@ -248,6 +248,10 @@ def AdvancedLinkMenu(
         data2 = data_collection[selected_data2.value]
         
         print(f"🔗 ADVANCED: data1={data1.label}, data2={data2.label}")
+        registry_object = selected_item['registry_object']
+        helper_class = getattr(registry_object, 'helper', None)
+        helper_class_name = helper_class.__name__ if helper_class else ""
+        is_join_request = helper_class_name == 'JoinLink'
         
         try:
             # Qt's EXACT pattern from meeting notes:
@@ -259,12 +263,36 @@ def AdvancedLinkMenu(
             temp_state.data2 = data2
             
             # Qt's exact method call - this does ALL the work
-            registry_object = selected_item['registry_object']
             print(f"🔗 ADVANCED: Calling temp_state.new_link() with registry_object")
-            
             try:
                 temp_state.new_link(registry_object)
+            except Exception as e:
+                error_msg = str(e)
+                print(f"⚠️ ADVANCED: temp_state.new_link failed: {error_msg}")
+                print(f"⚠️ ADVANCED: Helper/function = {registry_object}")
+                shared_refresh_counter.set(shared_refresh_counter.value + 1)
+                return
+
+            # Pre-flight duplicate detection for JoinLink before mutating data_collection
+            if is_join_request and temp_state.links:
+                candidate_state = temp_state.links[-1]
+                candidate_link = candidate_state.link
                 
+                duplicate_link = next(
+                    (
+                        existing for existing in data_collection.external_links
+                        if existing == candidate_link
+                    ),
+                    None
+                )
+                
+                if duplicate_link is not None:
+                    print(f"⚠️ ADVANCED: Duplicate JoinLink detected between {data1.label} and {data2.label}")
+                    print(f"⚠️ ADVANCED: Existing link {duplicate_link} blocks creation of identical join")
+                    shared_refresh_counter.set(shared_refresh_counter.value + 1)
+                    return
+
+            try:
                 # Apply to data collection (Qt's pattern)
                 print(f"🔗 ADVANCED: Calling temp_state.update_links_in_collection()")
                 temp_state.update_links_in_collection()
@@ -275,10 +303,23 @@ def AdvancedLinkMenu(
                 _verify_backend_connection(data_collection, "ADVANCED_LINK_CREATION")
                 
             except Exception as e:
-                print(f"🔗 ADVANCED: Link creation failed: {str(e)}")
-                print(f"🔗 ADVANCED: This usually means the datasets are incompatible with this link type")
-                print(f"🔗 ADVANCED: Link type: {selected_item.get('label', 'Unknown')}")
+                error_msg = str(e)
+                link_type = selected_item.get('label', 'Unknown')
+
+                # Better error message for JoinLink duplicates
+                if 'inverse' in error_msg.lower() or 'JoinLink' in error_msg:
+                    print(f"⚠️ ADVANCED: Cannot create duplicate JoinLink between {data1.label} and {data2.label}")
+                    print(f"⚠️ ADVANCED: A JoinLink with these parameters already exists")
+                    print(f"⚠️ ADVANCED: Hint: JoinLinks are unique - only one join per dataset pair is allowed")
+                    # TODO: Add Solara toast/notification for user visibility
+                    # solara.Error(f"JoinLink already exists between {data1.label} and {data2.label}")
+                else:
+                    print(f"🔗 ADVANCED: Link creation failed: {error_msg}")
+                    print(f"🔗 ADVANCED: This usually means the datasets are incompatible with this link type")
+                    print(f"🔗 ADVANCED: Link type: {link_type}")
+
                 # Don't crash - just return gracefully
+                shared_refresh_counter.set(shared_refresh_counter.value + 1)
                 return
             
             # UI refresh
@@ -918,213 +959,6 @@ def stringify_links(link):
     except Exception as e:
         print(f"🐛 DEBUG stringify_links: Exception = {e}")
         return f"Link (display error)"
-# ========== GRAPH VISUALIZATION COMPONENTS ==========
-# Based on Qt's DataGraphWidget (glue-qt/dialogs/link_editor/data_graph.py)
-# Provides visual graph representation of datasets and their links
-
-def get_graph_connections(dc_links):
-    """
-    Extract unique dataset pairs from data_collection links.
-    Based on Qt's get_connections function (data_graph.py:164-172)
-
-    Returns list of (data1, data2, link_type) tuples representing edges
-    """
-    connections = []
-    for link in dc_links:
-        # Extract data objects from link
-        data1 = getattr(link, 'data1', None)
-        data2 = getattr(link, 'data2', None)
-
-        # Determine link type for visualization
-        link_type = 'value'  # Default
-        if hasattr(link, 'link_type'):
-            link_type = link.link_type
-        elif type(link).__name__ == 'JoinLink':
-            link_type = 'join'
-
-        # Only add if both datasets exist and not already in list
-        if data1 and data2:
-            # Check if connection already exists (bidirectional)
-            if (data1, data2, link_type) not in connections and (data2, data1, link_type) not in connections:
-                connections.append((data1, data2, link_type))
-
-    return connections
-
-
-def _links_between_datasets(external_links, dataset_a, dataset_b):
-    """
-    Return link objects that connect the two datasets (order agnostic).
-    """
-    if dataset_a is None or dataset_b is None or dataset_a is dataset_b:
-        return []
-
-    matched = []
-    for link in external_links:
-        data1 = getattr(link, "data1", None)
-        data2 = getattr(link, "data2", None)
-
-        if data1 is None or data2 is None:
-            continue
-
-        if (data1 is dataset_a and data2 is dataset_b) or (data1 is dataset_b and data2 is dataset_a):
-            matched.append(link)
-
-    return matched
-
-
-@solara.component_vue("data-graph.vue")
-def DataGraphCanvas(
-    nodes,
-    edges,
-    width=800,
-    height=300,
-    selectedIndex1=None,
-    selectedIndex2=None,
-    event_selection_changed=None
-):
-    """
-    Vue component wrapper for the data graph canvas.
-    Renders the actual graph visualization using HTML Canvas.
-    """
-    pass
-
-
-@solara.component
-def DataGraphVisualization(
-    data_collection,
-    graph_data1: solara.Reactive,
-    graph_data2: solara.Reactive,
-    graph_selection_level: solara.Reactive[int],
-    selected_data1: solara.Reactive[int],
-    selected_data2: solara.Reactive[int]
-):
-    """
-    Solara wrapper for data graph visualization.
-    Manages state and data flow between graph canvas and linker UI.
-
-    Based on Qt's DataGraphWidget integration in link_editor.py:69-70, 127-132
-
-    Args:
-        data_collection: Glue DataCollection containing datasets
-        graph_data1: Reactive state for first selected dataset from graph
-        graph_data2: Reactive state for second selected dataset from graph
-        selected_data1: Reactive index of dataset 1 (synced with dropdowns)
-        selected_data2: Reactive index of dataset 2 (synced with dropdowns)
-    """
-
-    # Prepare nodes data (list of dataset info)
-    datasets = list(data_collection)
-
-    nodes_data = [
-        {
-            "label": getattr(dataset, "label", f"Dataset {index}"),
-            "index": index,
-        }
-        for index, dataset in enumerate(datasets)
-    ]
-
-    data_to_index = {dataset: index for index, dataset in enumerate(datasets)}
-
-    # Build edge metadata (count + style) from external links
-    edge_map = {}
-    for link in data_collection.external_links:
-        data1 = getattr(link, "data1", None)
-        data2 = getattr(link, "data2", None)
-
-        if data1 is None or data2 is None:
-            continue
-
-        index1 = data_to_index.get(data1)
-        index2 = data_to_index.get(data2)
-
-        if index1 is None or index2 is None or index1 == index2:
-            continue
-
-        key = tuple(sorted((index1, index2)))
-        entry = edge_map.setdefault(
-            key,
-            {"source": key[0], "target": key[1], "count": 0, "link_types": set()},
-        )
-        entry["count"] += 1
-
-        link_type = getattr(link, "link_type", None)
-        if not link_type and type(link).__name__ == "JoinLink":
-            link_type = "join"
-        if link_type:
-            entry["link_types"].add(link_type)
-
-    edges_data = []
-    for entry in edge_map.values():
-        link_type = "join" if "join" in entry["link_types"] else "value"
-        edges_data.append(
-            {
-                "source": entry["source"],
-                "target": entry["target"],
-                "link_type": link_type,
-                "count": entry["count"],
-            }
-        )
-
-    edges_data.sort(key=lambda edge: (edge["source"], edge["target"]))
-
-    def dataset_from_index(index):
-        if isinstance(index, int) and 0 <= index < len(datasets):
-            return datasets[index]
-        return None
-
-    # Prefer graph-selected datasets, fall back to dropdown selection
-    use_graph_selection = graph_selection_level.value > 0
-    if use_graph_selection:
-        display_dataset1 = graph_data1.value
-        display_dataset2 = graph_data2.value
-    else:
-        display_dataset1 = dataset_from_index(selected_data1.value)
-        display_dataset2 = dataset_from_index(selected_data2.value)
-
-    selected_index1 = data_to_index.get(display_dataset1)
-    selected_index2 = data_to_index.get(display_dataset2)
-
-    def on_selection_changed(event):
-        """
-        Handle selection changes from graph.
-        Updates both graph state and dropdown indices.
-        Based on Qt's _on_data_change_graph (link_editor.py:127-128)
-        """
-        print(f"🎨 GRAPH: Selection changed - {event}")
-
-        index1 = event.get("data1Index")
-        index2 = event.get("data2Index")
-        selection_level = event.get("selectionLevel", 0) or 0
-        has_edge = event.get("hasEdge")
-        link_count = event.get("linkCount", 0)
-
-        dataset1 = dataset_from_index(index1)
-        dataset2 = dataset_from_index(index2)
-
-        graph_data1.set(dataset1)
-        graph_data2.set(dataset2)
-        graph_selection_level.set(selection_level)
-
-        if dataset1 is not None:
-            selected_data1.set(data_to_index[dataset1])
-            print(f"🎨 GRAPH: Set dataset1 index to {data_to_index[dataset1]}")
-        if dataset2 is not None:
-            selected_data2.set(data_to_index[dataset2])
-            print(f"🎨 GRAPH: Set dataset2 index to {data_to_index[dataset2]}")
-
-        print(f"🎨 GRAPH: selection_level={selection_level}, has_edge={has_edge}, link_count={link_count}")
-
-    # Render the graph
-    with solara.Card(title="Dataset Graph", elevation=2, style={"margin-bottom": "20px"}):
-        DataGraphCanvas(
-            nodes=nodes_data,
-            edges=edges_data,
-            width=800,
-            height=300,
-            selectedIndex1=selected_index1,
-            selectedIndex2=selected_index2,
-            event_selection_changed=on_selection_changed,
-        )
 
 
 @solara.component
@@ -1160,27 +994,7 @@ def Linker(app: JupyterApplication, show_list: bool = True):
     # ENHANCED: Shared refresh counter to synchronize UI updates across components
     # This ensures both CurrentLinksSelector and QtStyleLinkDetailsPanel refresh together
     shared_refresh_counter = solara.use_reactive(0)
-
-    # NEW: Graph visualization state
-    # Tracks which datasets are selected in the graph (can be different from dropdown selection)
-    graph_data1 = solara.use_reactive(None)
-    graph_data2 = solara.use_reactive(None)
-    graph_selection_level = solara.use_reactive(0)
-
-    def _reset_link_selection():
-        selected_link_index.set(-1)
-
-    solara.use_effect(
-        lambda: (_reset_link_selection(), lambda: None)[1],
-        [
-            id(graph_data1.value) if graph_data1.value is not None else 0,
-            id(graph_data2.value) if graph_data2.value is not None else 0,
-            selected_data1.value,
-            selected_data2.value,
-            graph_selection_level.value,
-        ],
-    )
-
+    
     # Core glue data structure - present in all versions
     data_collection = app.data_collection
     
@@ -1246,19 +1060,6 @@ def Linker(app: JupyterApplication, show_list: bool = True):
     # CURRENT: Same layout but with interactive link selection and editing
     
     with solara.Column():
-        # NEW: Graph visualization at top (Phase 1-4 implementation)
-        # Based on Qt's DataGraphWidget integration (link_editor.py:69-70)
-        # Shows visual representation of datasets and their links
-        if len(data_collection) > 1:
-            DataGraphVisualization(
-                data_collection=data_collection,
-                graph_data1=graph_data1,
-                graph_data2=graph_data2,
-                graph_selection_level=graph_selection_level,
-                selected_data1=selected_data1,
-                selected_data2=selected_data2
-            )
-
         # EVOLUTION: Main layout - mirrors Qt interface structure
         # This 5-column layout matches the Qt version:
         # [Dataset1] [Flip] [Dataset2] [Current Links] [Link Details]
@@ -1289,18 +1090,13 @@ def Linker(app: JupyterApplication, show_list: bool = True):
                 # ORIGINAL: Simple non-interactive list
                 # CURRENT: Interactive selector that enables clicking and selection
                 # FIXED: Increased width for longer link descriptions (Issue #4)
-                with solara.Column(style={"min-width": "220px", "max-width": "280px", "flex": "0 0 220px"}):
+                with solara.Column(style={"min-width": "380px", "max-width": "340px", "flex": "0 0 260px"}):
                     solara.Markdown("**Links between Dataset 1 and Dataset 2**")
                     if show_list:
                         CurrentLinksSelector(
                             data_collection=data_collection,
                             selected_link_index=selected_link_index,  # CURRENT: Enables selection tracking
-                            shared_refresh_counter=shared_refresh_counter,  # ENHANCED: For cache invalidation
-                            selected_data1=selected_data1,
-                            selected_data2=selected_data2,
-                            graph_data1=graph_data1,
-                            graph_data2=graph_data2,
-                            graph_selection_level=graph_selection_level,
+                            shared_refresh_counter=shared_refresh_counter  # ENHANCED: For cache invalidation
                         )
                 
                 # EVOLUTION: Column 5 - Link Details Panel (MAJOR NEW FEATURE)
@@ -1309,17 +1105,14 @@ def Linker(app: JupyterApplication, show_list: bool = True):
                 # CURRENT: Full interactive editing capabilities
                 # FIXED: Adjust width to compensate for wider links column
                 with solara.Column(style={"flex": "1 1 auto", "min-width": "200px", "max-width": "250px"}):
-                        QtStyleLinkDetailsPanel(
-                            app=app,
-                            data_collection=data_collection, 
-                            selected_data1=selected_data1,     # For context when no link selected
-                            selected_data2=selected_data2,     # For context when no link selected
-                            graph_data1=graph_data1,
-                            graph_data2=graph_data2,
-                            graph_selection_level=graph_selection_level,
-                            selected_link_index=selected_link_index,  # CURRENT: Drives the editing functionality
-                            shared_refresh_counter=shared_refresh_counter,  # ENHANCED: For cache invalidation
-                        )
+                    QtStyleLinkDetailsPanel(
+                        app=app,
+                        data_collection=data_collection, 
+                        selected_data1=selected_data1,     # For context when no link selected
+                        selected_data2=selected_data2,     # For context when no link selected
+                        selected_link_index=selected_link_index,  # CURRENT: Drives the editing functionality
+                        shared_refresh_counter=shared_refresh_counter,  # ENHANCED: For cache invalidation
+                    )
         
         # EVOLUTION: Action buttons - present in all versions
         # ORIGINAL: Just the "Glue Attributes" button
@@ -1407,11 +1200,6 @@ def CurrentLinksSelector(
     data_collection: DataCollection,
     selected_link_index: solara.Reactive[int],
     shared_refresh_counter: solara.Reactive[int],
-    selected_data1: solara.Reactive[int],
-    selected_data2: solara.Reactive[int],
-    graph_data1: solara.Reactive,
-    graph_data2: solara.Reactive,
-    graph_selection_level: solara.Reactive[int],
 ):
     """
     EVOLUTION: CurrentLinksSelector - MAJOR NEW COMPONENT (not in original/previous)
@@ -1428,58 +1216,31 @@ def CurrentLinksSelector(
     # These prints help understand when and how links are being selected/updated
     print(f"🔥 HARDCORE DEBUG: CurrentLinksSelector render, selected_link_index={selected_link_index.value}")
     
-    def dataset_from_index(index):
-        if isinstance(index, int) and 0 <= index < len(data_collection):
-            return data_collection[index]
-        return None
-
-    use_graph_selection = graph_selection_level.value > 0
-    if use_graph_selection:
-        dataset_a = graph_data1.value
-        dataset_b = graph_data2.value
-    else:
-        dataset_a = dataset_from_index(selected_data1.value)
-        dataset_b = dataset_from_index(selected_data2.value)
-
-    filtered_links = solara.use_memo(
-        lambda: _links_between_datasets(data_collection.external_links, dataset_a, dataset_b),
-        [
-            shared_refresh_counter.value,
-            id(dataset_a) if dataset_a is not None else 0,
-            id(dataset_b) if dataset_b is not None else 0,
-        ],
+    # EVOLUTION: Memoization for performance
+    # ORIGINAL: No memoization, direct iteration over data_collection.external_links
+    # CURRENT: Uses solara.use_memo to avoid recreating list on every render
+    # CRITICAL FIX: Added shared_refresh_counter to force cache invalidation
+    # This fixes the stale UI issue where links weren't updating after editing
+    links_list = solara.use_memo(
+        lambda: list(data_collection.external_links),
+        [shared_refresh_counter.value]  # FIXED: Force refresh when counter changes
     )
     
     # CURRENT: Extensive debug logging to understand link structure
     # This helps debug when links aren't showing up or have unexpected format
-    print(f"🔥 HARDCORE DEBUG: CurrentLinksSelector links_list = {filtered_links}")
-    print(f"🔥 HARDCORE DEBUG: CurrentLinksSelector links_list count = {len(filtered_links)}")
-    for i, link in enumerate(filtered_links):
+    print(f"🔥 HARDCORE DEBUG: CurrentLinksSelector links_list = {links_list}")
+    print(f"🔥 HARDCORE DEBUG: CurrentLinksSelector links_list count = {len(links_list)}")
+    for i, link in enumerate(links_list):
         if hasattr(link, '_cid1') and hasattr(link, '_cid2'):
             print(f"🔥 HARDCORE DEBUG: CurrentLinksSelector link[{i}] = {link._cid1.label} <-> {link._cid2.label}")
         else:
             print(f"🔥 HARDCORE DEBUG: CurrentLinksSelector link[{i}] = {link} (unknown structure)")
-
-    if dataset_a is None or dataset_b is None or dataset_a is dataset_b:
-        if selected_link_index.value != -1:
-            selected_link_index.set(-1)
-        return solara.Text("Select two different datasets", style={"color": "#666", "font-style": "italic"})
-
-    if len(filtered_links) == 0:
-        if selected_link_index.value != -1:
-            selected_link_index.set(-1)
-        label_a = getattr(dataset_a, "label", "Dataset 1")
-        label_b = getattr(dataset_b, "label", "Dataset 2")
-        return solara.Text(
-            f"No links between {label_a} and {label_b}",
-            style={"color": "#666", "font-style": "italic"},
-        )
-
-    if 0 <= selected_link_index.value < len(filtered_links):
-        pass
-    else:
-        if selected_link_index.value != -1:
-            selected_link_index.set(-1)
+    
+    # EVOLUTION: User-friendly empty state
+    # ORIGINAL: Would show empty list widget
+    # CURRENT: Shows helpful message when no links exist
+    if len(links_list) == 0:
+        return solara.Text("No links created yet", style={"color": "#666", "font-style": "italic"})
     
     # EVOLUTION: Interactive selection list - KEY NEW FEATURE
     # ORIGINAL: Links were displayed but not selectable
@@ -1492,7 +1253,7 @@ def CurrentLinksSelector(
         ):
             # Each link becomes a selectable list item
             # The value=idx connects the visual list item to the index in links_list
-            for idx, link in enumerate(filtered_links):
+            for idx, link in enumerate(links_list):
                 with solara.v.ListItem(value=idx):
                     with solara.v.ListItemContent():
                         solara.v.ListItemTitle(children=[stringify_links(link)])
@@ -1504,9 +1265,6 @@ def QtStyleLinkDetailsPanel(
     data_collection: DataCollection,
     selected_data1: solara.Reactive[int],
     selected_data2: solara.Reactive[int],
-    graph_data1: solara.Reactive,
-    graph_data2: solara.Reactive,
-    graph_selection_level: solara.Reactive[int],
     selected_link_index: solara.Reactive[int],
     shared_refresh_counter: solara.Reactive[int],
 ):
@@ -1530,54 +1288,19 @@ def QtStyleLinkDetailsPanel(
     editing_link = solara.use_reactive(False)      # Track if user is editing (currently unused)
     # NOTE: refresh_counter is now passed as shared_refresh_counter parameter
     
-    if len(data_collection) == 0:
-        return solara.Text("No data available")
-    
     # EVOLUTION: Performance optimization with memoization  
     # This caches the links list to avoid recreating it on every render
     # Links change when glue_watch detects ExternallyDerivableComponentsChangedMessage
     # CRITICAL FIX: Force refresh when shared_refresh_counter changes to break stale cache
-    def dataset_from_index(index):
-        if isinstance(index, int) and 0 <= index < len(data_collection):
-            return data_collection[index]
-        return None
-
-    use_graph_selection = graph_selection_level.value > 0
-    if use_graph_selection:
-        dataset_a = graph_data1.value
-        dataset_b = graph_data2.value
-    else:
-        dataset_a = dataset_from_index(selected_data1.value)
-        dataset_b = dataset_from_index(selected_data2.value)
-
     links_list = solara.use_memo(
-        lambda: _links_between_datasets(data_collection.external_links, dataset_a, dataset_b),
-        [
-            shared_refresh_counter.value,
-            id(dataset_a) if dataset_a is not None else 0,
-            id(dataset_b) if dataset_b is not None else 0,
-        ],
+        lambda: list(data_collection.external_links),
+        [shared_refresh_counter.value]  # FIXED: Add shared_refresh_counter to force cache invalidation
     )
     
     # CURRENT: Debug logging to track link detail panel state
     print(f"🔥 HARDCORE DEBUG: QtStyleLinkDetailsPanel render, selected_link_index={selected_link_index.value}")
     print(f"🔥 HARDCORE DEBUG: QtStyleLinkDetailsPanel links_list = {links_list}")
     print(f"🔥 HARDCORE DEBUG: QtStyleLinkDetailsPanel len(links_list) = {len(links_list)}")
-    
-    if dataset_a is None or dataset_b is None or dataset_a is dataset_b:
-        if selected_link_index.value != -1:
-            selected_link_index.set(-1)
-        return solara.Text("Select two datasets to inspect link details", style={"color": "#666", "font-style": "italic"})
-
-    if len(links_list) == 0:
-        if selected_link_index.value != -1:
-            selected_link_index.set(-1)
-        label_a = getattr(dataset_a, "label", "Dataset 1")
-        label_b = getattr(dataset_b, "label", "Dataset 2")
-        return solara.Text(
-            f"No links between {label_a} and {label_b}",
-            style={"color": "#666", "font-style": "italic"},
-        )
     
     # CURRENT: ENHANCED MEMOIZATION FIX - Better link change detection
     # Problem: Original hash didn't detect when link objects changed internally
@@ -1603,6 +1326,10 @@ def QtStyleLinkDetailsPanel(
     print(f"🔥 HARDCORE DEBUG: QtStyleLinkDetailsPanel link_contents_hash = {link_contents_hash}")
     print(f"🔥 HARDCORE DEBUG: QtStyleLinkDetailsPanel shared_refresh_counter = {shared_refresh_counter.value}")
     
+    # EVOLUTION: Safety check - present in all versions with link details
+    if len(data_collection) == 0:
+        return solara.Text("No data available")
+    
     # EVOLUTION: Link editing handlers - THE CORE NEW FUNCTIONALITY
     # ORIGINAL: No link editing capability
     # PREVIOUS: No link editing capability  
@@ -1613,7 +1340,7 @@ def QtStyleLinkDetailsPanel(
         TASK 2: Remove Link functionality
         
         This function handles direct link removal when user clicks "Remove Link" button
-        Uses data_collection.remove_link() directly without recreation
+        Uses Qt's LinkEditorState atomic replacement to keep glue-core metadata consistent
         Ensures proper UI state cleanup after removal
         """
         print(f"🔥 TASK 2: _remove_link called")
@@ -1652,10 +1379,45 @@ def QtStyleLinkDetailsPanel(
             print(f"🔥 TASK 2: Removing link {link_display}")
             print(f"🔥 TASK 2: Before remove - external_links count = {len(data_collection.external_links)}")
             
-            # CRITICAL: Use data_collection.remove_link() as specified in meeting
+            # CRITICAL: Use Qt-style atomic replacement to keep glue metadata consistent
             try:
-                data_collection.remove_link(link)
-                print(f"🔥 TASK 2: Link removal successful")
+                from glue.dialogs.link_editor.state import LinkEditorState
+
+                links_in_collection = list(data_collection.external_links)
+                target_index = None
+
+                # Primary: remove by object identity
+                for idx, existing in enumerate(links_in_collection):
+                    if existing is link:
+                        target_index = idx
+                        break
+
+                # Fallback: equality check (avoids removing unrelated identical links by logging warning first)
+                if target_index is None:
+                    for idx, existing in enumerate(links_in_collection):
+                        if existing == link:
+                            target_index = idx
+                            print(f"🔥 TASK 2: WARNING - Falling back to equality match for removal at index {idx}")
+                            break
+
+                if target_index is None:
+                    print(f"🔥 TASK 2: ERROR - Selected link not found in data_collection.external_links")
+                    return
+
+                print(f"🔥 TASK 2: Removing link at index {target_index} using LinkEditorState atomic pattern")
+
+                temp_state = LinkEditorState(data_collection)
+
+                if target_index >= len(temp_state.links):
+                    print(f"🔥 TASK 2: ERROR - temp_state.links length {len(temp_state.links)} < target_index {target_index}")
+                    return
+
+                removed_state = temp_state.links.pop(target_index)
+                print(f"🔥 TASK 2: LinkEditorState removal successful: {removed_state}")
+
+                temp_state.update_links_in_collection()
+                print(f"🔥 TASK 2: Link removal successful via atomic update")
+
             except Exception as e:
                 print(f"🔥 TASK 2: ERROR during link removal: {e}")
                 print(f"🔥 TASK 2: Link type: {type(link)}")
@@ -2094,6 +1856,18 @@ def QtStyleLinkDetailsPanel(
                 original_link_type = type(link).__name__
                 print(f"🚀 UNIFIED EDIT: Original link type: {original_link_type}")
 
+                # 🔗 JOINLINK SPECIAL CASE: Remove old JoinLink from data_collection FIRST
+                # JoinLink's __eq__ treats similar links as identical, causing confusion in glue-core
+                # Removing it first prevents duplicate detection issues during recreation
+                if original_link_type == 'JoinLink':
+                    print(f"🔗 JOINLINK FIX: Removing old JoinLink before recreation to prevent __eq__ confusion")
+                    try:
+                        data_collection.remove_link(link)
+                        print(f"🔗 JOINLINK FIX: Successfully removed old JoinLink from data_collection")
+                    except Exception as e:
+                        print(f"🔗 JOINLINK FIX: Warning - could not remove old link: {e}")
+                        # Continue anyway - it might already be gone
+
                 try:
                     # Step 2: Use Qt's EditableLinkFunctionState pattern for ALL edits
                     from glue.dialogs.link_editor.state import LinkEditorState
@@ -2208,7 +1982,24 @@ def QtStyleLinkDetailsPanel(
                                 print(f"🚀 DATASET1 CURRENT_LINK DEBUG: AFTER - current_link.x = {current_link.x}")
                                 print(f"🚀 DATASET1 CURRENT_LINK DEBUG: AFTER - current_link.y = {current_link.y}")
                                 print(f"🚀 UNIFIED EDIT: Updated identity function components: {new_component.label} -> {old_component2.label}")
-                            
+
+                            # Special handling for JoinLink (has cids1/cids2, not _from/_to)
+                            elif type(link).__name__ == 'JoinLink' and hasattr(current_link, 'data1') and hasattr(current_link, 'names1'):
+                                print(f"🚀 DATASET1 JOINLINK DEBUG: Handling JoinLink parameter update")
+
+                                # Update input parameter (dataset1 side - user's change)
+                                input_param_name = current_link.names1[0] if current_link.names1 else None
+                                if input_param_name and hasattr(current_link, input_param_name):
+                                    setattr(current_link, input_param_name, new_component)
+                                    print(f"🚀 DATASET1 JOINLINK: Updated input {input_param_name} = {new_component.label}")
+
+                                # CRITICAL FIX: Restore original output parameter (dataset2 side)
+                                if hasattr(link, 'cids2') and link.cids2:
+                                    output_param_name = current_link.names2[0] if current_link.names2 else None
+                                    if output_param_name and hasattr(current_link, output_param_name):
+                                        setattr(current_link, output_param_name, link.cids2[0])
+                                        print(f"🚀 DATASET1 JOINLINK: Restored output {output_param_name} = {link.cids2[0].label}")
+
                             # Try to update first component mapping (this is user's edit) - FALLBACK for non-identity functions
                             elif hasattr(current_link, 'data1') and hasattr(current_link, 'names1'):
                                 print(f"🚀 DATASET1 CURRENT_LINK DEBUG: Found data1/names1 parameters!")
@@ -2452,6 +2243,18 @@ def QtStyleLinkDetailsPanel(
                 # Step 1: Determine original link creation method
                 original_link_type = type(link).__name__
                 print(f"🚀 UNIFIED EDIT DATASET2: Original link type: {original_link_type}")
+
+                # 🔗 JOINLINK SPECIAL CASE: Remove old JoinLink from data_collection FIRST
+                # JoinLink's __eq__ treats similar links as identical, causing confusion in glue-core
+                # Removing it first prevents duplicate detection issues during recreation
+                if original_link_type == 'JoinLink':
+                    print(f"🔗 JOINLINK FIX DATASET2: Removing old JoinLink before recreation to prevent __eq__ confusion")
+                    try:
+                        data_collection.remove_link(link)
+                        print(f"🔗 JOINLINK FIX DATASET2: Successfully removed old JoinLink from data_collection")
+                    except Exception as e:
+                        print(f"🔗 JOINLINK FIX DATASET2: Warning - could not remove old link: {e}")
+                        # Continue anyway - it might already be gone
 
                 try:
                     # Step 2: Use Qt's EditableLinkFunctionState pattern for ALL edits
@@ -3065,10 +2868,11 @@ def _get_selected_link_info(links_list, selected_index):
                     print(f"🚀 MULTI-PARAM DEBUG: cids2 count = {len(link.cids2)}")
                     print(f"🚀 MULTI-PARAM DEBUG: labels1 = {link.labels1}")
                     print(f"🚀 MULTI-PARAM DEBUG: labels2 = {link.labels2}")
-                    
-                    # Check if it's a coordinate pair (2-to-2) transformation
-                    if len(link.cids1) == 2 and len(link.cids2) == 2:
-                        print(f"🚀 MULTI-PARAM DEBUG: 2-TO-2 COORDINATE TRANSFORMATION DETECTED!")
+
+                    # Check if it's an N-to-N coordinate transformation (2-to-2, 3-to-3, etc.)
+                    # Examples: 2-to-2 (ICRS, Galactic), 3-to-3 (Galactocentric)
+                    if len(link.cids1) >= 2 and len(link.cids2) >= 2:
+                        print(f"🚀 MULTI-PARAM DEBUG: {len(link.cids1)}-TO-{len(link.cids2)} COORDINATE TRANSFORMATION DETECTED!")
                         
                         # Build coordinate pair parameter structure
                         coord_type = type(link).__name__
