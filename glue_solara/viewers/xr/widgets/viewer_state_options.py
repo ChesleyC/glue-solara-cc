@@ -11,14 +11,14 @@ class XRStateWidget(v.VuetifyTemplate):
 
     glue_state = GlueState().tag(sync=True)
 
-    x_att_items = traitlets.List().tag(sync=True)
+    x_att_items: traitlets.List[str] = traitlets.List().tag(sync=True)
     x_att_selected = traitlets.Int(allow_none=True).tag(sync=True)
 
     y_att_items: traitlets.List[str] = traitlets.List().tag(sync=True)
-    y_att_items = traitlets.List().tag(sync=True)
+    y_att_selected = traitlets.Int(allow_none=True).tag(sync=True)
 
     z_att_items: traitlets.List[str] = traitlets.List().tag(sync=True)
-    z_att_items = traitlets.List().tag(sync=True)
+    z_att_selected = traitlets.Int(allow_none=True).tag(sync=True)
 
     def __init__(self, viewer_state):
         super().__init__()
