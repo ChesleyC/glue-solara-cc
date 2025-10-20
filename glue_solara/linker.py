@@ -19,14 +19,14 @@ Performance:
 Qt Reference: glue_qt/dialogs/link_editor/link_editor.py (LinkEditor, LinkMenu classes)
 """
 
+import time
+
 import glue.core.message as msg
 import solara
 from glue.core import DataCollection
 from glue_jupyter import JupyterApplication
-import time
 
 from .hooks import use_glue_watch
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  REGISTRY CACHING - Performance Critical
@@ -44,6 +44,7 @@ from .hooks import use_glue_watch
 
 _CACHED_LINK_MENU_DATA = None
 
+
 def get_function_name(registry_item):
     """Extract display name from link_function or link_helper registry item.
 
@@ -53,17 +54,18 @@ def get_function_name(registry_item):
     Returns:
         str: Display name for UI (e.g., "Convert to volume", "Join on keys")
     """
-    if hasattr(registry_item, 'display') and registry_item.display is not None:
+    if hasattr(registry_item, "display") and registry_item.display is not None:
         return registry_item.display
-    elif hasattr(registry_item, 'function'):
+    elif hasattr(registry_item, "function"):
         return registry_item.function.__name__
-    elif hasattr(registry_item, 'helper'):
-        if hasattr(registry_item.helper, 'display') and registry_item.helper.display:
+    elif hasattr(registry_item, "helper"):
+        if hasattr(registry_item.helper, "display") and registry_item.helper.display:
             return registry_item.helper.display
         else:
             return registry_item.helper.__name__
     else:
-        return str(registry_item) 
+        return str(registry_item)
+
 
 def _build_link_menu_cache():
     """Build hierarchical menu structure from glue registries.
@@ -101,7 +103,7 @@ def _build_link_menu_cache():
         categories.append(helper.category)
         helper_count += 1
 
-    categories = ['General'] + sorted(set(categories) - set(['General']))
+    categories = ["General"] + sorted(set(categories) - set(["General"]))
 
     # Build menu structure: {category: [items]}
     menu_data = {}
@@ -113,12 +115,14 @@ def _build_link_menu_cache():
             if function.category == category and len(function.output_labels) == 1:
                 try:
                     display_name = get_function_name(function)
-                    menu_data[category].append({
-                        'type': 'function',
-                        'display': display_name,
-                        'registry_object': function, 
-                        'description': getattr(function, 'info', '')
-                    })
+                    menu_data[category].append(
+                        {
+                            "type": "function",
+                            "display": display_name,
+                            "registry_object": function,
+                            "description": getattr(function, "info", ""),
+                        }
+                    )
                 except Exception:
                     pass
 
@@ -126,34 +130,39 @@ def _build_link_menu_cache():
             if helper.category == category:
                 try:
                     display_name = get_function_name(helper)
-                    menu_data[category].append({
-                        'type': 'helper',
-                        'display': display_name,
-                        'registry_object': helper,
-                        'description': getattr(helper.helper, 'description', '')
-                    })
+                    menu_data[category].append(
+                        {
+                            "type": "helper",
+                            "display": display_name,
+                            "registry_object": helper,
+                            "description": getattr(helper.helper, "description", ""),
+                        }
+                    )
                 except Exception:
                     pass
 
     # Ensure identity function is available (used as fallback in editing)
     identity_function = None
     for function in link_function.members:
-        if hasattr(function, 'function') and function.function.__name__ == 'identity':
+        if hasattr(function, "function") and function.function.__name__ == "identity":
             identity_function = function
             break
 
-    if identity_function and 'General' in menu_data:
-        identity_already_added = any(item['display'] == 'identity' for item in menu_data['General'])
+    if identity_function and "General" in menu_data:
+        identity_already_added = any(item["display"] == "identity" for item in menu_data["General"])
         if not identity_already_added:
-            menu_data['General'].append({
-                'type': 'function',
-                'display': 'identity',
-                'registry_object': identity_function,
-                'description': 'Identity link function'
-            })
+            menu_data["General"].append(
+                {
+                    "type": "function",
+                    "display": "identity",
+                    "registry_object": identity_function,
+                    "description": "Identity link function",
+                }
+            )
 
     _CACHED_LINK_MENU_DATA = menu_data
     return menu_data
+
 
 def get_link_menu_data():
     """Get cached registry data (safe for Solara components - no .members access)."""
@@ -162,7 +171,7 @@ def get_link_menu_data():
 
 # Module initialization: cache registry data before any component renders
 try:
-    import glue.plugins.coordinate_helpers.link_helpers
+    pass
 except Exception:
     pass
 
@@ -199,12 +208,11 @@ def AdvancedLinkMenu(
 
     selected_category = solara.use_reactive("general")
     selected_link_item = solara.use_reactive("")
-    show_menu = solara.use_reactive(False)
 
     categories = get_link_menu_data()
     category_names = list(categories.keys())
     current_category_items = categories.get(selected_category.value, [])
-    item_names = [item['display'] for item in current_category_items]
+    item_names = [item["display"] for item in current_category_items]
 
     def create_advanced_link():
         """Create link using Qt's LinkEditorState.new_link() method."""
@@ -213,7 +221,7 @@ def AdvancedLinkMenu(
 
         selected_item = None
         for item in current_category_items:
-            if item['display'] == selected_link_item.value:
+            if item["display"] == selected_link_item.value:
                 selected_item = item
                 break
 
@@ -222,10 +230,10 @@ def AdvancedLinkMenu(
 
         data1 = data_collection[selected_data1.value]
         data2 = data_collection[selected_data2.value]
-        registry_object = selected_item['registry_object']
-        helper_class = getattr(registry_object, 'helper', None)
+        registry_object = selected_item["registry_object"]
+        helper_class = getattr(registry_object, "helper", None)
         helper_class_name = helper_class.__name__ if helper_class else ""
-        is_join_request = helper_class_name == 'JoinLink'
+        is_join_request = helper_class_name == "JoinLink"
 
         try:
             from glue.dialogs.link_editor.state import LinkEditorState
@@ -244,18 +252,23 @@ def AdvancedLinkMenu(
             if is_join_request and temp_state.links:
                 candidate_state = temp_state.links[-1]
                 candidate_link = candidate_state.link
-                
+
                 duplicate_link = next(
                     (
-                        existing for existing in data_collection.external_links
+                        existing
+                        for existing in data_collection.external_links
                         if existing == candidate_link
                     ),
-                    None
+                    None,
                 )
 
                 if duplicate_link is not None:
-                    print(f"⚠️ ADVANCED: Duplicate JoinLink detected between {data1.label} and {data2.label}")
-                    print(f"⚠️ ADVANCED: Existing link {duplicate_link} blocks creation of identical join")
+                    print(
+                        f"⚠️ ADVANCED: Duplicate JoinLink detected between {data1.label} and {data2.label}"
+                    )
+                    print(
+                        f"⚠️ ADVANCED: Existing link {duplicate_link} blocks creation of identical join"
+                    )
                     shared_refresh_counter.set(shared_refresh_counter.value + 1)
                     return
 
@@ -263,10 +276,14 @@ def AdvancedLinkMenu(
                 temp_state.update_links_in_collection()
             except Exception as e:
                 error_msg = str(e)
-                if 'inverse' in error_msg.lower() or 'JoinLink' in error_msg:
-                    print(f"⚠️ ADVANCED: Cannot create duplicate JoinLink between {data1.label} and {data2.label}")
-                    print(f"⚠️ ADVANCED: A JoinLink with these parameters already exists")
-                    print(f"⚠️ ADVANCED: Hint: JoinLinks are unique - only one join per dataset pair is allowed")
+                if "inverse" in error_msg.lower() or "JoinLink" in error_msg:
+                    print(
+                        f"⚠️ ADVANCED: Cannot create duplicate JoinLink between {data1.label} and {data2.label}"
+                    )
+                    print("⚠️ ADVANCED: A JoinLink with these parameters already exists")
+                    print(
+                        "⚠️ ADVANCED: Hint: JoinLinks are unique - only one join per dataset pair is allowed"
+                    )
                 shared_refresh_counter.set(shared_refresh_counter.value + 1)
                 return
             shared_refresh_counter.set(shared_refresh_counter.value + 1)
@@ -291,28 +308,49 @@ def AdvancedLinkMenu(
 
                 if selected_link_item.value:
                     selected_item = next(
-                        (item for item in current_category_items if item['display'] == selected_link_item.value),
-                        None
+                        (
+                            item
+                            for item in current_category_items
+                            if item["display"] == selected_link_item.value
+                        ),
+                        None,
                     )
-                    if selected_item and selected_item.get('description'):
-                        solara.Text(f"Description: {selected_item['description']}", style={"font-style": "italic"})
+                    if selected_item and selected_item.get("description"):
+                        solara.Text(
+                            f"Description: {selected_item['description']}",
+                            style={"font-style": "italic"},
+                        )
 
                 with solara.Row():
                     solara.Button(
                         "Create Link",
                         on_click=create_advanced_link,
-                        disabled=not selected_link_item.value or selected_data1.value == -1 or selected_data2.value == -1,
-                        color="primary"
+                        disabled=not selected_link_item.value
+                        or selected_data1.value == -1
+                        or selected_data2.value == -1,
+                        color="primary",
                     )
             else:
-                solara.Text(f"No links available in '{selected_category.value}' category", style={"color": "gray"})
+                solara.Text(
+                    f"No links available in '{selected_category.value}' category",
+                    style={"color": "gray"},
+                )
 
 
 def _create_identity_link(data1, data2, row1_index, row2_index, app):
     """Legacy helper: Create identity link using app.add_link()."""
-    comp1 = data1.components[row1_index] if row1_index >= 0 and row1_index < len(data1.components) else data1.components[0]
-    comp2 = data2.components[row2_index] if row2_index >= 0 and row2_index < len(data2.components) else data2.components[0]
+    comp1 = (
+        data1.components[row1_index]
+        if row1_index >= 0 and row1_index < len(data1.components)
+        else data1.components[0]
+    )
+    comp2 = (
+        data2.components[row2_index]
+        if row2_index >= 0 and row2_index < len(data2.components)
+        else data2.components[0]
+    )
     app.add_link(data1, comp1, data2, comp2)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  LEGACY HELPER FUNCTIONS - Not Used (Replaced by LinkEditorState)
@@ -321,19 +359,23 @@ def _create_identity_link(data1, data2, row1_index, row2_index, app):
 #       These functions remain for potential future use or custom extensions.
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _create_link_from_registry_object_with_dynamic_params(app, data_collection, registry_object, item_type, data1, data2, param_selections):
+
+def _create_link_from_registry_object_with_dynamic_params(
+    app, data_collection, registry_object, item_type, data1, data2, param_selections
+):
     """Legacy: Create link with dynamic multi-parameter support.
 
     Supports N→1 patterns like lengths_to_volume(width, height, depth) → volume.
     Current code uses temp_state.new_link() instead.
     """
     try:
-        if item_type == 'function':
+        if item_type == "function":
             from inspect import getfullargspec
+
             function_obj = registry_object.function
             output_labels = registry_object.output_labels
             input_names = getfullargspec(function_obj)[0]
-            output_names = output_labels if output_labels else ['output']
+            output_names = output_labels if output_labels else ["output"]
 
             input_components = []
             for i, param_name in enumerate(input_names):
@@ -372,21 +414,25 @@ def _create_link_from_registry_object_with_dynamic_params(app, data_collection, 
                 link = ComponentLink(input_components, output_components[0], using=function_obj)
             data_collection.add_link(link)
 
-        elif item_type == 'helper':
-            if getattr(registry_object.helper, 'cid_independent', False):
+        elif item_type == "helper":
+            if getattr(registry_object.helper, "cid_independent", False):
                 link_instance = registry_object.helper(data1=data1, data2=data2)
                 data_collection.add_link(link_instance)
             else:
                 helper_class = registry_object.helper
-                input_names = getattr(helper_class, 'labels1', [])
-                output_names = getattr(helper_class, 'labels2', [])
+                input_names = getattr(helper_class, "labels1", [])
+                output_names = getattr(helper_class, "labels2", [])
                 input_components = []
                 output_components = []
 
                 for param_name in input_names:
                     if param_name in param_selections:
                         comp_index = param_selections[param_name]
-                        comp = data1.components[comp_index] if comp_index < len(data1.components) else data1.components[0]
+                        comp = (
+                            data1.components[comp_index]
+                            if comp_index < len(data1.components)
+                            else data1.components[0]
+                        )
                     else:
                         comp = data1.components[0]
                     input_components.append(comp)
@@ -394,7 +440,11 @@ def _create_link_from_registry_object_with_dynamic_params(app, data_collection, 
                 for param_name in output_names:
                     if param_name in param_selections:
                         comp_index = param_selections[param_name]
-                        comp = data2.components[comp_index] if comp_index < len(data2.components) else data2.components[0]
+                        comp = (
+                            data2.components[comp_index]
+                            if comp_index < len(data2.components)
+                            else data2.components[0]
+                        )
                     else:
                         comp = data2.components[0]
                     output_components.append(comp)
@@ -403,30 +453,49 @@ def _create_link_from_registry_object_with_dynamic_params(app, data_collection, 
                     cids1=input_components if input_components else [data1.components[0]],
                     cids2=output_components if output_components else [data2.components[0]],
                     data1=data1,
-                    data2=data2
+                    data2=data2,
                 )
                 data_collection.add_link(link_instance)
     except Exception:
         raise
 
 
-def _create_identity_link_direct(app, data_collection, data1_index, data2_index, cid1_index, cid2_index):
+def _create_identity_link_direct(
+    app, data_collection, data1_index, data2_index, cid1_index, cid2_index
+):
     """Legacy: Direct identity link creation."""
     data1 = data_collection[data1_index]
     data2 = data_collection[data2_index]
-    comp1 = data1.components[cid1_index] if cid1_index >= 0 and cid1_index < len(data1.components) else data1.components[0]
-    comp2 = data2.components[cid2_index] if cid2_index >= 0 and cid2_index < len(data2.components) else data2.components[0]
+    comp1 = (
+        data1.components[cid1_index]
+        if cid1_index >= 0 and cid1_index < len(data1.components)
+        else data1.components[0]
+    )
+    comp2 = (
+        data2.components[cid2_index]
+        if cid2_index >= 0 and cid2_index < len(data2.components)
+        else data2.components[0]
+    )
     app.add_link(data1, comp1, data2, comp2)
 
 
 def _create_function_link(function_item, data1, data2, row1_index, row2_index, app):
     """Legacy: Create function link with automatic multi-parameter handling."""
-    function_object = function_item['function_object']
+    function_object = function_item["function_object"]
     function_callable = function_object.function
     import inspect
+
     sig = inspect.signature(function_callable)
-    comp1 = data1.components[row1_index] if row1_index >= 0 and row1_index < len(data1.components) else data1.components[0]
-    comp2 = data2.components[row2_index] if row2_index >= 0 and row2_index < len(data2.components) else data2.components[0]
+    comp1 = (
+        data1.components[row1_index]
+        if row1_index >= 0 and row1_index < len(data1.components)
+        else data1.components[0]
+    )
+    comp2 = (
+        data2.components[row2_index]
+        if row2_index >= 0 and row2_index < len(data2.components)
+        else data2.components[0]
+    )
 
     from glue.core.component_link import ComponentLink
 
@@ -448,14 +517,15 @@ def _create_function_link(function_item, data1, data2, row1_index, row2_index, a
 
 def _create_helper_link(helper_item, data1, data2, app):
     """Legacy: Create helper link using EditableLinkFunctionState."""
-    helper_object = helper_item['helper_object']
+    helper_object = helper_item["helper_object"]
     helper_class = helper_object.helper
 
     try:
-        if hasattr(helper_class, 'cid_independent') and helper_class.cid_independent:
+        if hasattr(helper_class, "cid_independent") and helper_class.cid_independent:
             links = helper_class(data1=data1, data2=data2)
         else:
             from glue_qt.dialogs.link_editor.state import EditableLinkFunctionState
+
             state = EditableLinkFunctionState(helper_class, data1=data1, data2=data2)
             links = state.link
 
@@ -491,46 +561,46 @@ def stringify_links(link):
         str: Human-readable link description
     """
     try:
-        if hasattr(link, '_cid1') and hasattr(link, '_cid2'):
-            cid1_label = getattr(link._cid1, 'label', str(link._cid1))
-            cid2_label = getattr(link._cid2, 'label', str(link._cid2))
+        if hasattr(link, "_cid1") and hasattr(link, "_cid2"):
+            cid1_label = getattr(link._cid1, "label", str(link._cid1))
+            cid2_label = getattr(link._cid2, "label", str(link._cid2))
             return f"{cid1_label} <-> {cid2_label}"
 
-        elif type(link).__name__ == 'JoinLink':
+        elif type(link).__name__ == "JoinLink":
             return str(link)
 
-        elif 'coordinate_helpers' in str(type(link)):
+        elif "coordinate_helpers" in str(type(link)):
             link_class_name = type(link).__name__
-            if hasattr(link, 'description'):
+            if hasattr(link, "description"):
                 return link.description
-            elif hasattr(link, 'display') and link.display:
+            elif hasattr(link, "display") and link.display:
                 return link.display
             else:
-                if 'FK4_to_FK5' in link_class_name:
+                if "FK4_to_FK5" in link_class_name:
                     return "FK4 (B1950) <-> FK5 (J2000)"
-                elif 'Galactic_to_FK4' in link_class_name:
+                elif "Galactic_to_FK4" in link_class_name:
                     return "Galactic <-> FK4 (B1950)"
-                elif 'ICRS_to_FK5' in link_class_name:
+                elif "ICRS_to_FK5" in link_class_name:
                     return "ICRS <-> FK5 (J2000)"
-                elif 'ICRS_to_Galactic' in link_class_name:
+                elif "ICRS_to_Galactic" in link_class_name:
                     return "ICRS <-> Galactic"
-                elif 'Galactic_to_FK5' in link_class_name:
+                elif "Galactic_to_FK5" in link_class_name:
                     return "Galactic <-> FK5 (J2000)"
                 else:
                     return f"Coordinate Transform ({link_class_name})"
 
-        elif hasattr(link, '_from') and hasattr(link, '_to'):
+        elif hasattr(link, "_from") and hasattr(link, "_to"):
             if isinstance(link._from, list) and len(link._from) > 0:
-                from_labels = [getattr(c, 'label', str(c)) for c in link._from]
-                to_label = getattr(link._to, 'label', str(link._to))
+                from_labels = [getattr(c, "label", str(c)) for c in link._from]
+                to_label = getattr(link._to, "label", str(link._to))
                 function_name = "function"
-                if hasattr(link, '_using') and link._using:
-                    function_name = getattr(link._using, '__name__', 'function')
+                if hasattr(link, "_using") and link._using:
+                    function_name = getattr(link._using, "__name__", "function")
 
-                if function_name == 'identity' and len(from_labels) == 1:
+                if function_name == "identity" and len(from_labels) == 1:
                     display = f"{from_labels[0]} <-> {to_label}"
 
-                elif len(from_labels) == 1 and hasattr(link, 'inverse') and link.inverse:
+                elif len(from_labels) == 1 and hasattr(link, "inverse") and link.inverse:
                     display = f"{function_name}({from_labels[0]} <-> {to_label})"
                 elif len(from_labels) == 1:
                     display = f"{function_name}({from_labels[0]} -> {to_label})"
@@ -540,24 +610,24 @@ def stringify_links(link):
 
                 return display
             else:
-                from_label = getattr(link._from, 'label', str(link._from))
-                to_label = getattr(link._to, 'label', str(link._to))
+                from_label = getattr(link._from, "label", str(link._from))
+                to_label = getattr(link._to, "label", str(link._to))
                 return f"{from_label} -> {to_label}"
 
         else:
             link_type = type(link).__name__
-            if hasattr(link, 'description') and link.description:
+            if hasattr(link, "description") and link.description:
                 return link.description
-            elif hasattr(link, 'display') and link.display:
+            elif hasattr(link, "display") and link.display:
                 return link.display
-            elif hasattr(link, '__str__'):
+            elif hasattr(link, "__str__"):
                 str_rep = str(link)
-                if len(str_rep) < 100 and 'object at 0x' not in str_rep:
+                if len(str_rep) < 100 and "object at 0x" not in str_rep:
                     return str_rep
             return f"Advanced Link ({link_type})"
 
     except Exception:
-        return f"Link (display error)"
+        return "Link (display error)"
 
 
 @solara.component
@@ -581,7 +651,6 @@ def Linker(app: JupyterApplication, show_list: bool = True):
     selected_row1 = solara.use_reactive(0)
     selected_data2 = solara.use_reactive(1)
     selected_row2 = solara.use_reactive(0)
-    selected_function = solara.use_reactive("identity")
     selected_link_index = solara.use_reactive(-1)
     shared_refresh_counter = solara.use_reactive(0)
 
@@ -608,33 +677,53 @@ def Linker(app: JupyterApplication, show_list: bool = True):
         selected_link_index.set(new_position)
 
     data_dict = [
-        {"label": data.label, "value": index}
-        for index, data in enumerate(data_collection or [])
+        {"label": data.label, "value": index} for index, data in enumerate(data_collection or [])
     ]
 
     with solara.Column():
-        with solara.Row(style={"align-items": "start", "gap": "15px", "width": "100%", "min-width": "1000px", "flex-wrap": "nowrap"}):
+        with solara.Row(
+            style={
+                "align-items": "start",
+                "gap": "15px",
+                "width": "100%",
+                "min-width": "1000px",
+                "flex-wrap": "nowrap",
+            }
+        ):
             if len(data_collection) > 1:
+                with solara.Column(
+                    style={"min-width": "150px", "max-width": "180px", "flex": "0 0 150px"}
+                ):
+                    LinkSelector(
+                        data_collection, data_dict, selected_data1, selected_row1, "Dataset 1"
+                    )
 
-                with solara.Column(style={"min-width": "150px", "max-width": "180px", "flex": "0 0 150px"}):
-                    LinkSelector(data_collection, data_dict, selected_data1, selected_row1, "Dataset 1")
-
-                with solara.Column(style={"align-items": "center", "flex": "0 0 30px", "min-width": "30px"}):
+                with solara.Column(
+                    style={"align-items": "center", "flex": "0 0 30px", "min-width": "30px"}
+                ):
                     solara.Text("⇄", style={"font-size": "24px", "margin-top": "40px"})
 
-                with solara.Column(style={"min-width": "150px", "max-width": "180px", "flex": "0 0 150px"}):
-                    LinkSelector(data_collection, data_dict, selected_data2, selected_row2, "Dataset 2")
+                with solara.Column(
+                    style={"min-width": "150px", "max-width": "180px", "flex": "0 0 150px"}
+                ):
+                    LinkSelector(
+                        data_collection, data_dict, selected_data2, selected_row2, "Dataset 2"
+                    )
 
-                with solara.Column(style={"min-width": "380px", "max-width": "340px", "flex": "0 0 260px"}):
+                with solara.Column(
+                    style={"min-width": "380px", "max-width": "340px", "flex": "0 0 260px"}
+                ):
                     solara.Markdown("**Links between Dataset 1 and Dataset 2**")
                     if show_list:
                         CurrentLinksSelector(
                             data_collection=data_collection,
                             selected_link_index=selected_link_index,
-                            shared_refresh_counter=shared_refresh_counter
+                            shared_refresh_counter=shared_refresh_counter,
                         )
 
-                with solara.Column(style={"flex": "1 1 auto", "min-width": "200px", "max-width": "250px"}):
+                with solara.Column(
+                    style={"flex": "1 1 auto", "min-width": "200px", "max-width": "250px"}
+                ):
                     QtStyleLinkDetailsPanel(
                         app=app,
                         data_collection=data_collection,
@@ -727,8 +816,7 @@ def CurrentLinksSelector(
     """
 
     links_list = solara.use_memo(
-        lambda: list(data_collection.external_links),
-        [shared_refresh_counter.value]
+        lambda: list(data_collection.external_links), [shared_refresh_counter.value]
     )
 
     if len(links_list) == 0:
@@ -780,32 +868,35 @@ def QtStyleLinkDetailsPanel(
     Qt Reference: glue_qt/dialogs/link_editor/link_editor.py (link details panel)
     """
 
-    selected_attr1 = solara.use_reactive(0)
-    selected_attr2 = solara.use_reactive(0)
-    editing_link = solara.use_reactive(False)
-
     links_list = solara.use_memo(
-        lambda: list(data_collection.external_links),
-        [shared_refresh_counter.value]
+        lambda: list(data_collection.external_links), [shared_refresh_counter.value]
     )
 
     # Hash includes object IDs to detect when links are recreated
     link_contents_hash = solara.use_memo(
-        lambda: hash(tuple(
-            f"{id(link)}_{str(link._cid1)}_{str(link._cid2)}_{link.data1.label}_{link.data2.label}"
-            for link in links_list if hasattr(link, '_cid1')
-        )),
-        []
+        lambda: hash(
+            tuple(
+                f"{id(link)}_{str(link._cid1)}_{str(link._cid2)}_{link.data1.label}_{link.data2.label}"
+                for link in links_list
+                if hasattr(link, "_cid1")
+            )
+        ),
+        [],
     )
 
     selected_link_info = solara.use_memo(
         lambda: _get_selected_link_info(links_list, selected_link_index.value),
-        [selected_link_index.value, len(links_list), link_contents_hash, shared_refresh_counter.value]
+        [
+            selected_link_index.value,
+            len(links_list),
+            link_contents_hash,
+            shared_refresh_counter.value,
+        ],
     )
 
     if len(data_collection) == 0:
         return solara.Text("No data available")
-    
+
     def _remove_link():
         """Remove selected link using Qt's atomic pattern.
 
@@ -841,7 +932,6 @@ def QtStyleLinkDetailsPanel(
                 if target_index >= len(temp_state.links):
                     return
 
-                removed_state = temp_state.links.pop(target_index)
                 temp_state.update_links_in_collection()
 
             except Exception:
@@ -850,7 +940,7 @@ def QtStyleLinkDetailsPanel(
             time.sleep(0.1)
             shared_refresh_counter.set(shared_refresh_counter.value + 1)
             selected_link_index.set(-1)
-    
+
     def _update_coordinate_parameter(dataset, param_index, new_attr_index):
         """Edit individual coordinate in 2-to-2 transforms (e.g., ra/dec <-> l/b).
 
@@ -862,18 +952,22 @@ def QtStyleLinkDetailsPanel(
         if selected_link_info is not None and selected_link_index.value >= 0:
             link, link_data = selected_link_info
 
-            if not link_data.get('is_coordinate_pair', False):
+            if not link_data.get("is_coordinate_pair", False):
                 return
 
-            coord1_param_info = link_data.get('coord1_param_info', [])
-            coord2_param_info = link_data.get('coord2_param_info', [])
+            coord1_param_info = link_data.get("coord1_param_info", [])
+            coord2_param_info = link_data.get("coord2_param_info", [])
 
             if dataset == 1 and param_index >= len(coord1_param_info):
                 return
             elif dataset == 2 and param_index >= len(coord2_param_info):
                 return
 
-            if 'coordinate_helpers' in str(type(link)) and hasattr(link, 'data1') and hasattr(link, 'data2'):
+            if (
+                "coordinate_helpers" in str(type(link))
+                and hasattr(link, "data1")
+                and hasattr(link, "data2")
+            ):
                 from_data = link.data1
                 to_data = link.data2
 
@@ -884,11 +978,11 @@ def QtStyleLinkDetailsPanel(
                         new_cids1[param_index] = new_component
                         new_cids2 = list(link.cids2)
 
-                        original_position = selected_link_index.value
-
                         coord_type = type(link)
                         new_coord_helper = coord_type(new_cids1, new_cids2, from_data, to_data)
-                        other_links = [l for l in data_collection.external_links if l != link]
+                        other_links = [
+                            item for item in data_collection.external_links if item is not link
+                        ]
                         all_new_links = other_links + [new_coord_helper]
                         data_collection.set_links(all_new_links)
 
@@ -904,10 +998,11 @@ def QtStyleLinkDetailsPanel(
                         new_cids2 = list(link.cids2)
                         new_cids2[param_index] = new_component
 
-                        original_position = selected_link_index.value
                         coord_type = type(link)
                         new_coord_helper = coord_type(new_cids1, new_cids2, from_data, to_data)
-                        other_links = [l for l in data_collection.external_links if l != link]
+                        other_links = [
+                            item for item in data_collection.external_links if item is not link
+                        ]
                         all_new_links = other_links + [new_coord_helper]
                         data_collection.set_links(all_new_links)
 
@@ -926,16 +1021,15 @@ def QtStyleLinkDetailsPanel(
         if selected_link_info is not None and selected_link_index.value >= 0:
             link, link_data = selected_link_info
 
-            if not link_data.get('is_multi_param', False):
+            if not link_data.get("is_multi_param", False):
                 return
 
-            multi_param_info = link_data.get('multi_param_info', [])
+            multi_param_info = link_data.get("multi_param_info", [])
             if param_index >= len(multi_param_info):
                 return
 
-            if hasattr(link, '_from') and hasattr(link, '_to'):
+            if hasattr(link, "_from") and hasattr(link, "_to"):
                 from_data = link._from[0].parent
-                to_data = link._to.parent
                 old_to_component = link._to
 
                 if new_attr_index < len(from_data.components):
@@ -946,17 +1040,19 @@ def QtStyleLinkDetailsPanel(
                         if i == param_index:
                             new_from_components.append(new_from_component)
                         else:
-                            new_from_components.append(param['component'])
+                            new_from_components.append(param["component"])
 
                     function = None
-                    if hasattr(link, '_using'):
+                    if hasattr(link, "_using"):
                         function = link._using
 
-                    original_position = selected_link_index.value
                     from glue.core.component_link import ComponentLink
+
                     new_link = ComponentLink(new_from_components, old_to_component, using=function)
 
-                    other_links = [l for l in data_collection.external_links if l != link]
+                    other_links = [
+                        item for item in data_collection.external_links if item is not link
+                    ]
                     all_new_links = other_links + [new_link]
                     data_collection.set_links(all_new_links)
 
@@ -988,10 +1084,10 @@ def QtStyleLinkDetailsPanel(
             link, link_data = selected_link_info
 
             # Extract datasets from link
-            if hasattr(link, 'data1') and hasattr(link, 'data2'):
+            if hasattr(link, "data1") and hasattr(link, "data2"):
                 from_data = link.data1
                 to_data = link.data2
-            elif hasattr(link, '_from') and hasattr(link, '_to'):
+            elif hasattr(link, "_from") and hasattr(link, "_to"):
                 if isinstance(link._from, list) and len(link._from) > 0:
                     from_data = link._from[0].parent
                 else:
@@ -1000,22 +1096,20 @@ def QtStyleLinkDetailsPanel(
             else:
                 return
 
-            original_position = selected_link_index.value
-
             if new_attr_index < len(from_data.components):
                 new_component = from_data.components[new_attr_index]
 
                 # Extract Dataset 2 component (unchanged)
-                if hasattr(link, '_cid2'):
+                if hasattr(link, "_cid2"):
                     old_component2 = link._cid2
-                elif hasattr(link, '_to'):
+                elif hasattr(link, "_to"):
                     old_component2 = link._to
-                elif 'coordinate_helpers' in str(type(link)) and hasattr(link, 'cids2'):
+                elif "coordinate_helpers" in str(type(link)) and hasattr(link, "cids2"):
                     if link.cids2:
                         old_component2 = link.cids2[0]
                     else:
                         return
-                elif type(link).__name__ == 'JoinLink' and hasattr(link, 'cids2'):
+                elif type(link).__name__ == "JoinLink" and hasattr(link, "cids2"):
                     if link.cids2:
                         old_component2 = link.cids2[0]
                     else:
@@ -1026,10 +1120,10 @@ def QtStyleLinkDetailsPanel(
                 original_link_type = type(link).__name__
 
                 # JoinLink special case: remove first due to __eq__ treating similar links as identical
-                if original_link_type == 'JoinLink':
+                if original_link_type == "JoinLink":
                     try:
                         data_collection.remove_link(link)
-                    except Exception as e:
+                    except Exception:
                         pass
 
                 try:
@@ -1041,43 +1135,54 @@ def QtStyleLinkDetailsPanel(
 
                     # Remove old link by index (object identity)
                     original_index = None
-                    for i, l in enumerate(data_collection.external_links):
-                        if l is link:
+                    for i, item in enumerate(data_collection.external_links):
+                        if item is link:
                             original_index = i
                             break
 
                     if original_index is not None and original_index < len(temp_state.links):
-                        removed_link = temp_state.links.pop(original_index)
+                        temp_state.links.pop(original_index)
 
                     # Registry lookup: find original function/helper
                     registry_object = None
 
-                    if hasattr(link, '_using') and link._using:
+                    if hasattr(link, "_using") and link._using:
                         from glue.config import link_function
-                        function_name = getattr(link._using, '__name__', 'unknown')
+
+                        function_name = getattr(link._using, "__name__", "unknown")
                         for func in link_function.members:
-                            if hasattr(func, 'function') and func.function.__name__ == function_name:
+                            if (
+                                hasattr(func, "function")
+                                and func.function.__name__ == function_name
+                            ):
                                 registry_object = func
                                 break
 
-                    elif 'coordinate_helpers' in original_link_type.lower() or 'galactic' in original_link_type.lower() or 'icrs' in original_link_type.lower():
+                    elif (
+                        "coordinate_helpers" in original_link_type.lower()
+                        or "galactic" in original_link_type.lower()
+                        or "icrs" in original_link_type.lower()
+                    ):
                         from glue.config import link_helper
+
                         for helper in link_helper.members:
                             if helper.helper.__name__ == original_link_type:
                                 registry_object = helper
                                 break
 
-                    elif 'join' in original_link_type.lower():
+                    elif "join" in original_link_type.lower():
                         from glue.config import link_helper
+
                         for helper in link_helper.members:
-                            if 'join' in helper.helper.__name__.lower():
+                            if "join" in helper.helper.__name__.lower():
                                 registry_object = helper
                                 break
 
-                    elif 'linksame' in original_link_type.lower():
+                    elif "linksame" in original_link_type.lower():
                         from glue.config import link_helper
+
                         for helper in link_helper.members:
-                            if helper.helper.__name__ == 'LinkSame':
+                            if helper.helper.__name__ == "LinkSame":
                                 registry_object = helper
                                 break
 
@@ -1085,39 +1190,55 @@ def QtStyleLinkDetailsPanel(
                     if registry_object:
                         temp_state.new_link(registry_object)
 
-                        if hasattr(temp_state, 'data1_att') and hasattr(temp_state, 'data2_att'):
+                        if hasattr(temp_state, "data1_att") and hasattr(temp_state, "data2_att"):
                             temp_state.data1_att = new_component
                             temp_state.data2_att = old_component2
 
-                        elif hasattr(temp_state, 'current_link') and temp_state.current_link:
+                        elif hasattr(temp_state, "current_link") and temp_state.current_link:
                             current_link = temp_state.current_link
 
-                            if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                            if hasattr(current_link, "x") and hasattr(current_link, "y"):
                                 current_link.x = new_component
                                 current_link.y = old_component2
 
-                            elif type(link).__name__ == 'JoinLink' and hasattr(current_link, 'data1') and hasattr(current_link, 'names1'):
-                                input_param_name = current_link.names1[0] if current_link.names1 else None
+                            elif (
+                                type(link).__name__ == "JoinLink"
+                                and hasattr(current_link, "data1")
+                                and hasattr(current_link, "names1")
+                            ):
+                                input_param_name = (
+                                    current_link.names1[0] if current_link.names1 else None
+                                )
                                 if input_param_name and hasattr(current_link, input_param_name):
                                     setattr(current_link, input_param_name, new_component)
-                                if hasattr(link, 'cids2') and link.cids2:
-                                    output_param_name = current_link.names2[0] if current_link.names2 else None
-                                    if output_param_name and hasattr(current_link, output_param_name):
+                                if hasattr(link, "cids2") and link.cids2:
+                                    output_param_name = (
+                                        current_link.names2[0] if current_link.names2 else None
+                                    )
+                                    if output_param_name and hasattr(
+                                        current_link, output_param_name
+                                    ):
                                         setattr(current_link, output_param_name, link.cids2[0])
 
-                            elif hasattr(current_link, 'data1') and hasattr(current_link, 'names1'):
+                            elif hasattr(current_link, "data1") and hasattr(current_link, "names1"):
                                 names1 = current_link.names1
                                 if names1 and len(names1) > 0:
                                     first_param_name = names1[0]
                                     if hasattr(current_link, first_param_name):
                                         setattr(current_link, first_param_name, new_component)
 
-                            elif hasattr(current_link, 'names1') and hasattr(current_link, 'names2'):
+                            elif hasattr(current_link, "names1") and hasattr(
+                                current_link, "names2"
+                            ):
                                 if current_link.names1 and len(current_link.names1) > 0:
                                     first_param_name = current_link.names1[0]
                                     if hasattr(current_link, first_param_name):
                                         setattr(current_link, first_param_name, new_component)
-                                if hasattr(link, '_to') and current_link.names2 and len(current_link.names2) > 0:
+                                if (
+                                    hasattr(link, "_to")
+                                    and current_link.names2
+                                    and len(current_link.names2) > 0
+                                ):
                                     output_param_name = current_link.names2[0]
                                     if hasattr(current_link, output_param_name):
                                         setattr(current_link, output_param_name, link._to)
@@ -1127,25 +1248,25 @@ def QtStyleLinkDetailsPanel(
                     else:
                         # Fallback: use identity function if registry object not found
                         from glue.config import link_function
+
                         identity_func = None
                         for func in link_function.members:
-                            if hasattr(func, 'function') and func.function.__name__ == 'identity':
+                            if hasattr(func, "function") and func.function.__name__ == "identity":
                                 identity_func = func
                                 break
 
                         if identity_func:
                             temp_state.new_link(identity_func)
-                            if hasattr(temp_state, 'current_link') and temp_state.current_link:
+                            if hasattr(temp_state, "current_link") and temp_state.current_link:
                                 current_link = temp_state.current_link
-                                if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                                if hasattr(current_link, "x") and hasattr(current_link, "y"):
                                     current_link.x = new_component
                                     current_link.y = old_component2
                             temp_state.update_links_in_collection()
                         else:
                             app.add_link(from_data, new_component, to_data, old_component2)
 
-                except Exception as e:
-                    import traceback
+                except Exception:
                     app.add_link(from_data, new_component, to_data, old_component2)
 
                 time.sleep(0.1)  # Small delay to let glue update internal state
@@ -1153,7 +1274,7 @@ def QtStyleLinkDetailsPanel(
                 new_position = len(data_collection.external_links) - 1
                 selected_link_index.set(-1)
                 selected_link_index.set(new_position)
-                
+
     def _update_dataset2_attribute(new_attr_index):
         """Edit Dataset 2 (output) attribute using Qt's remove-and-recreate pattern.
 
@@ -1197,11 +1318,11 @@ def QtStyleLinkDetailsPanel(
             link, link_data = selected_link_info
 
             # Step 1: Extract datasets - handle both LinkCollection and ComponentLink patterns
-            if hasattr(link, 'data1') and hasattr(link, 'data2'):
+            if hasattr(link, "data1") and hasattr(link, "data2"):
                 # LinkCollection types: LinkSame, JoinLink, coordinate helpers
                 from_data = link.data1
                 to_data = link.data2
-            elif hasattr(link, '_from') and hasattr(link, '_to'):
+            elif hasattr(link, "_from") and hasattr(link, "_to"):
                 # ComponentLink types: identity, function, coordinate transforms
                 if isinstance(link._from, list):
                     from_data = link._from[0].parent  # Multi-input: get parent from first
@@ -1211,27 +1332,27 @@ def QtStyleLinkDetailsPanel(
             else:
                 return  # Unknown link structure
 
-            original_position = selected_link_index.value
-
             if new_attr_index < len(to_data.components):
                 # Step 2: Extract Dataset 1 component (remains unchanged during Dataset 2 edit)
                 # Handle all link type variations with priority order
-                if hasattr(link, '_cid1'):
+                if hasattr(link, "_cid1"):
                     # LinkSame: Has _cid1 and _cid2 attributes
                     old_component1 = link._cid1
-                elif hasattr(link, '_from'):
+                elif hasattr(link, "_from"):
                     # ComponentLink: _from can be single ComponentID or list
                     if isinstance(link._from, list):
-                        old_component1 = link._from[0]  # Use first input for multi-parameter functions
+                        old_component1 = link._from[
+                            0
+                        ]  # Use first input for multi-parameter functions
                     else:
                         old_component1 = link._from
-                elif 'coordinate_helpers' in str(type(link)) and hasattr(link, 'cids1'):
+                elif "coordinate_helpers" in str(type(link)) and hasattr(link, "cids1"):
                     # Coordinate helpers: cids1 is always a list (2-to-2 or 3-to-3 transforms)
                     if link.cids1:
                         old_component1 = link.cids1[0]
                     else:
                         return  # Invalid coordinate helper without cids1
-                elif type(link).__name__ == 'JoinLink' and hasattr(link, 'cids1'):
+                elif type(link).__name__ == "JoinLink" and hasattr(link, "cids1"):
                     # JoinLink: cids1 is a list with single element (key column)
                     if link.cids1:
                         old_component1 = link.cids1[0]
@@ -1245,10 +1366,10 @@ def QtStyleLinkDetailsPanel(
 
                 # JoinLink special handling: Remove before recreating
                 # JoinLink.__eq__ treats similar links as identical, causing issues with temp_state
-                if original_link_type == 'JoinLink':
+                if original_link_type == "JoinLink":
                     try:
                         data_collection.remove_link(link)
-                    except Exception as e:
+                    except Exception:
                         pass  # Link may already be removed
 
                 try:
@@ -1262,36 +1383,36 @@ def QtStyleLinkDetailsPanel(
                     # Remove old link by index using object identity (not equality)
                     # This prevents removing multiple identical links
                     original_index = None
-                    for i, l in enumerate(data_collection.external_links):
-                        if l is link:  # Object identity check
+                    for i, item in enumerate(data_collection.external_links):
+                        if item is link:  # Object identity check
                             original_index = i
                             break
 
                     if original_index is not None and original_index < len(temp_state.links):
-                        removed_link = temp_state.links.pop(original_index)
+                        temp_state.links.pop(original_index)
 
                     # Step 4: Find original registry object by link type
                     registry_object = None
 
                     # Extract function name for registry lookup
-                    function_name = 'unknown'
-                    if hasattr(link, '_using') and link._using:
-                        function_name = getattr(link._using, '__name__', 'unknown')
+                    function_name = "unknown"
+                    if hasattr(link, "_using") and link._using:
+                        function_name = getattr(link._using, "__name__", "unknown")
 
                     # Detect coordinate helpers by both class name and function name patterns
                     is_coordinate_helper = (
-                        'coordinate_helpers' in original_link_type.lower() or
-                        'galactic' in original_link_type.lower() or
-                        'icrs' in original_link_type.lower() or
-                        'fk4' in original_link_type.lower() or
-                        'fk5' in original_link_type.lower() or
-                        'icrs_to' in function_name.lower() or
-                        'galactic_to' in function_name.lower() or
-                        'fk4_to' in function_name.lower() or
-                        'fk5_to' in function_name.lower() or
-                        '_to_fk' in function_name.lower() or
-                        '_to_icrs' in function_name.lower() or
-                        '_to_galactic' in function_name.lower()
+                        "coordinate_helpers" in original_link_type.lower()
+                        or "galactic" in original_link_type.lower()
+                        or "icrs" in original_link_type.lower()
+                        or "fk4" in original_link_type.lower()
+                        or "fk5" in original_link_type.lower()
+                        or "icrs_to" in function_name.lower()
+                        or "galactic_to" in function_name.lower()
+                        or "fk4_to" in function_name.lower()
+                        or "fk5_to" in function_name.lower()
+                        or "_to_fk" in function_name.lower()
+                        or "_to_icrs" in function_name.lower()
+                        or "_to_galactic" in function_name.lower()
                     )
 
                     if is_coordinate_helper:
@@ -1299,7 +1420,11 @@ def QtStyleLinkDetailsPanel(
                         from glue.config import link_helper
 
                         # Extract class name from function name (e.g., "ICRS_to_FK5.backwards_2" -> "ICRS_to_FK5")
-                        helper_class_name = function_name.split('.')[0] if '.' in function_name else original_link_type
+                        helper_class_name = (
+                            function_name.split(".")[0]
+                            if "." in function_name
+                            else original_link_type
+                        )
 
                         for helper in link_helper.members:
                             helper_name = helper.helper.__name__
@@ -1307,30 +1432,33 @@ def QtStyleLinkDetailsPanel(
                                 registry_object = helper
                                 break
 
-                    elif hasattr(link, '_using') and link._using:
+                    elif hasattr(link, "_using") and link._using:
                         # ComponentLink with transformation function
                         from glue.config import link_function
 
                         for func in link_function.members:
-                            if hasattr(func, 'function') and func.function.__name__ == function_name:
+                            if (
+                                hasattr(func, "function")
+                                and func.function.__name__ == function_name
+                            ):
                                 registry_object = func
                                 break
 
-                    elif 'join' in original_link_type.lower():
+                    elif "join" in original_link_type.lower():
                         # JoinLink lookup
                         from glue.config import link_helper
 
                         for helper in link_helper.members:
-                            if 'join' in helper.helper.__name__.lower():
+                            if "join" in helper.helper.__name__.lower():
                                 registry_object = helper
                                 break
 
-                    elif 'linksame' in original_link_type.lower():
+                    elif "linksame" in original_link_type.lower():
                         # LinkSame (identity bidirectional link)
                         from glue.config import link_helper
 
                         for helper in link_helper.members:
-                            if helper.helper.__name__ == 'LinkSame':
+                            if helper.helper.__name__ == "LinkSame":
                                 registry_object = helper
                                 break
 
@@ -1339,40 +1467,52 @@ def QtStyleLinkDetailsPanel(
                         temp_state.new_link(registry_object)
 
                         # Update component selections based on EditableLinkFunctionState structure
-                        if hasattr(temp_state, 'data1_att') and hasattr(temp_state, 'data2_att'):
+                        if hasattr(temp_state, "data1_att") and hasattr(temp_state, "data2_att"):
                             # Simple links (LinkSame): Direct attribute setters
                             temp_state.data1_att = old_component1  # Keep Dataset 1 unchanged
-                            temp_state.data2_att = new_component   # Update Dataset 2 (user's change)
+                            temp_state.data2_att = new_component  # Update Dataset 2 (user's change)
 
-                        elif hasattr(temp_state, 'current_link') and temp_state.current_link:
+                        elif hasattr(temp_state, "current_link") and temp_state.current_link:
                             # Complex links: Update via current_link state object
                             current_link = temp_state.current_link
 
-                            if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                            if hasattr(current_link, "x") and hasattr(current_link, "y"):
                                 # Identity function pattern (x/y parameters)
                                 current_link.x = old_component1  # Input (unchanged)
-                                current_link.y = new_component   # Output (user's change)
+                                current_link.y = new_component  # Output (user's change)
 
-                            elif type(link).__name__ == 'JoinLink' and hasattr(current_link, 'data2') and hasattr(current_link, 'names2'):
+                            elif (
+                                type(link).__name__ == "JoinLink"
+                                and hasattr(current_link, "data2")
+                                and hasattr(current_link, "names2")
+                            ):
                                 # JoinLink: Single input/output in cids1/cids2 lists
                                 # Restore input (Dataset 1), update output (Dataset 2)
-                                if hasattr(link, 'cids1') and link.cids1:
-                                    input_param_name = current_link.names1[0] if current_link.names1 else None
+                                if hasattr(link, "cids1") and link.cids1:
+                                    input_param_name = (
+                                        current_link.names1[0] if current_link.names1 else None
+                                    )
                                     if input_param_name and hasattr(current_link, input_param_name):
                                         setattr(current_link, input_param_name, link.cids1[0])
 
-                                output_param_name = current_link.names2[0] if current_link.names2 else None
+                                output_param_name = (
+                                    current_link.names2[0] if current_link.names2 else None
+                                )
                                 if output_param_name and hasattr(current_link, output_param_name):
                                     setattr(current_link, output_param_name, new_component)
 
-                            elif hasattr(current_link, 'data2') and hasattr(current_link, 'names2'):
+                            elif hasattr(current_link, "data2") and hasattr(current_link, "names2"):
                                 # Multi-parameter functions: Restore ALL inputs, update ONE output
-                                if hasattr(current_link, 'names1') and current_link.names1:
-                                    original_inputs = link._from  # List of original input components
+                                if hasattr(current_link, "names1") and current_link.names1:
+                                    original_inputs = (
+                                        link._from
+                                    )  # List of original input components
                                     names1 = current_link.names1
 
                                     for i, param_name in enumerate(names1):
-                                        if i < len(original_inputs) and hasattr(current_link, param_name):
+                                        if i < len(original_inputs) and hasattr(
+                                            current_link, param_name
+                                        ):
                                             original_component = original_inputs[i]
                                             setattr(current_link, param_name, original_component)
 
@@ -1383,11 +1523,15 @@ def QtStyleLinkDetailsPanel(
                                     if hasattr(current_link, first_output_name):
                                         setattr(current_link, first_output_name, new_component)
 
-                            elif hasattr(current_link, 'names1') and hasattr(current_link, 'names2'):
+                            elif hasattr(current_link, "names1") and hasattr(
+                                current_link, "names2"
+                            ):
                                 # link_function with multiple parameters (e.g., lengths_to_volume)
                                 if isinstance(link._from, list) and len(link._from) > 0:
                                     for i, param_name in enumerate(current_link.names1):
-                                        if i < len(link._from) and hasattr(current_link, param_name):
+                                        if i < len(link._from) and hasattr(
+                                            current_link, param_name
+                                        ):
                                             original_component = link._from[i]
                                             setattr(current_link, param_name, original_component)
 
@@ -1402,18 +1546,19 @@ def QtStyleLinkDetailsPanel(
                     else:
                         # Fallback: Registry lookup failed - use identity function
                         from glue.config import link_function
+
                         identity_func = None
                         for func in link_function.members:
-                            if hasattr(func, 'function') and func.function.__name__ == 'identity':
+                            if hasattr(func, "function") and func.function.__name__ == "identity":
                                 identity_func = func
                                 break
 
                         if identity_func:
                             temp_state.new_link(identity_func)
-                            if hasattr(temp_state, 'current_link') and temp_state.current_link:
+                            if hasattr(temp_state, "current_link") and temp_state.current_link:
                                 current_link = temp_state.current_link
 
-                                if hasattr(current_link, 'x') and hasattr(current_link, 'y'):
+                                if hasattr(current_link, "x") and hasattr(current_link, "y"):
                                     current_link.x = old_component1
                                     current_link.y = new_component
                             temp_state.update_links_in_collection()
@@ -1422,8 +1567,7 @@ def QtStyleLinkDetailsPanel(
                             # Final fallback: Use legacy add_link method
                             app.add_link(from_data, old_component1, to_data, new_component)
 
-                except Exception as e:
-                    import traceback
+                except Exception:
                     # Exception handler fallback
                     app.add_link(from_data, old_component1, to_data, new_component)
 
@@ -1437,45 +1581,61 @@ def QtStyleLinkDetailsPanel(
                 new_position = len(data_collection.external_links) - 1
                 selected_link_index.set(-1)  # Clear selection
                 selected_link_index.set(new_position)  # Select new link
-    
+
     # UI Layout: Link Details Panel (right column)
     # Responsive flex layout with overflow protection for modal display
-    with solara.Column(style={
-        "padding": "10px",
-        "width": "100%",
-        "max-width": "250px",  # Constrain width to prevent modal overflow
-        "flex": "1 1 auto",    # Flexible sizing
-        "overflow": "hidden"   # Clip overflowing content
-    }):
-
+    with solara.Column(
+        style={
+            "padding": "10px",
+            "width": "100%",
+            "max-width": "250px",  # Constrain width to prevent modal overflow
+            "flex": "1 1 auto",  # Flexible sizing
+            "overflow": "hidden",  # Clip overflowing content
+        }
+    ):
         # Panel header
         solara.Markdown("**Link details**")
 
         # Content: Show instructions or editing interface based on selection state
         if selected_link_info is None:
             # No link selected: Show helpful message
-            solara.Text("Click on a link to see details", style={"font-style": "italic", "color": "#666"})
+            solara.Text(
+                "Click on a link to see details", style={"font-style": "italic", "color": "#666"}
+            )
         else:
             # Link selected: Show full editing interface (Qt-style link details panel)
             link, link_data = selected_link_info
 
             # Descriptive text: Special message for multi-parameter links
-            if isinstance(link, type(link)) and hasattr(link, '_from') and len(getattr(link, '_from', [])) > 1:
-                solara.Text(f"Multi-parameter link ({len(link._from)} inputs → 1 output)",
-                           style={"font-style": "italic", "margin-bottom": "10px", "color": "#0066cc"})
-                solara.Text(f"Note: Only first input shown in editing panel",
-                           style={"font-size": "12px", "color": "#666", "margin-bottom": "10px"})
+            if (
+                isinstance(link, type(link))
+                and hasattr(link, "_from")
+                and len(getattr(link, "_from", [])) > 1
+            ):
+                solara.Text(
+                    f"Multi-parameter link ({len(link._from)} inputs → 1 output)",
+                    style={"font-style": "italic", "margin-bottom": "10px", "color": "#0066cc"},
+                )
+                solara.Text(
+                    "Note: Only first input shown in editing panel",
+                    style={"font-size": "12px", "color": "#666", "margin-bottom": "10px"},
+                )
             else:
-                solara.Text(f"Details about the link", style={"font-style": "italic", "margin-bottom": "10px"})
+                solara.Text(
+                    "Details about the link",
+                    style={"font-style": "italic", "margin-bottom": "10px"},
+                )
 
             # Dataset 1 attributes section: Multi-parameter or single-parameter display
             if link_data.get("is_multi_param", False):
                 if link_data.get("is_coordinate_pair", False):
                     # Coordinate pair transformation (2-to-2, 3-to-3, etc.)
-                    coord_type = link_data.get('coordinate_type', 'Coordinate')
+                    coord_type = link_data.get("coordinate_type", "Coordinate")
                     solara.Markdown(f"**{coord_type} coordinate transformation**")
-                    solara.Text(f"Transform coordinate pairs between reference frames",
-                               style={"color": "#666", "font-style": "italic", "margin-bottom": "10px"})
+                    solara.Text(
+                        "Transform coordinate pairs between reference frames",
+                        style={"color": "#666", "font-style": "italic", "margin-bottom": "10px"},
+                    )
 
                     # Display Dataset 1 coordinate parameters (e.g., ra, dec)
                     coord1_param_info = link_data.get("coord1_param_info", [])
@@ -1485,22 +1645,28 @@ def QtStyleLinkDetailsPanel(
                             solara.v.Select(
                                 label=f"{param['name']}",
                                 v_model=param["selected"],
-                                on_v_model=lambda new_value, param_idx=i, dataset=1: _update_coordinate_parameter(dataset, param_idx, new_value),
+                                on_v_model=lambda new_value,
+                                param_idx=i,
+                                dataset=1: _update_coordinate_parameter(
+                                    dataset, param_idx, new_value
+                                ),
                                 items=link_data["attr1_options"],
                                 item_text="label",
                                 item_value="value",
                                 style_="margin-bottom: 5px; width: 100%;",
                                 dense=True,
                                 outlined=True,
-                                hint=f"Current: {param['label']}"
+                                hint=f"Current: {param['label']}",
                             )
 
                 else:
                     # Multi-parameter function (e.g., lengths_to_volume with width, height, depth)
                     # Implements Qt's N_COMBO_MAX pattern with dynamic parameter dropdowns
                     solara.Markdown(f"**{link_data['function_name']} function parameters**")
-                    solara.Text(f"Convert between {link_data['function_name']} parameters",
-                               style={"color": "#666", "font-style": "italic", "margin-bottom": "10px"})
+                    solara.Text(
+                        f"Convert between {link_data['function_name']} parameters",
+                        style={"color": "#666", "font-style": "italic", "margin-bottom": "10px"},
+                    )
 
                     multi_param_info = link_data.get("multi_param_info", [])
 
@@ -1509,14 +1675,16 @@ def QtStyleLinkDetailsPanel(
                             solara.v.Select(
                                 label=f"{param['name']}",
                                 v_model=param["selected"],
-                                on_v_model=lambda new_value, param_idx=i: _update_multi_parameter(param_idx, new_value),
+                                on_v_model=lambda new_value, param_idx=i: _update_multi_parameter(
+                                    param_idx, new_value
+                                ),
                                 items=link_data["attr1_options"],
                                 item_text="label",
                                 item_value="value",
                                 style_="margin-bottom: 5px; width: 100%;",
                                 dense=True,
                                 outlined=True,
-                                hint=f"Current: {param['label']}"
+                                hint=f"Current: {param['label']}",
                             )
 
             else:
@@ -1532,10 +1700,12 @@ def QtStyleLinkDetailsPanel(
                         item_value="value",
                         style_="margin-bottom: 10px; width: 100%;",
                         dense=True,
-                        outlined=True
+                        outlined=True,
                     )
                 else:
-                    solara.Text("No attributes available", style={"color": "#999", "font-style": "italic"})
+                    solara.Text(
+                        "No attributes available", style={"color": "#999", "font-style": "italic"}
+                    )
 
             # Dataset 2 attributes section
             solara.Markdown("**Dataset 2 attributes**")
@@ -1550,14 +1720,18 @@ def QtStyleLinkDetailsPanel(
                             solara.v.Select(
                                 label=f"{param['name']}",
                                 v_model=param["selected"],
-                                on_v_model=lambda new_value, param_idx=i, dataset=2: _update_coordinate_parameter(dataset, param_idx, new_value),
+                                on_v_model=lambda new_value,
+                                param_idx=i,
+                                dataset=2: _update_coordinate_parameter(
+                                    dataset, param_idx, new_value
+                                ),
                                 items=link_data["attr2_options"],
                                 item_text="label",
                                 item_value="value",
                                 style_="margin-bottom: 5px; width: 100%;",
                                 dense=True,
                                 outlined=True,
-                                hint=f"Current: {param['label']}"
+                                hint=f"Current: {param['label']}",
                             )
 
                 else:
@@ -1574,7 +1748,9 @@ def QtStyleLinkDetailsPanel(
                         outlined=True,
                     )
             else:
-                solara.Text("No attributes available", style={"color": "#999", "font-style": "italic"})
+                solara.Text(
+                    "No attributes available", style={"color": "#999", "font-style": "italic"}
+                )
 
             # Remove Link button: Matches Qt's link removal functionality
             with solara.Row(style={"margin-top": "20px", "justify-content": "flex-start"}):
@@ -1583,7 +1759,7 @@ def QtStyleLinkDetailsPanel(
                     color="error",  # Red color indicates destructive action
                     on_click=_remove_link,
                     outlined=True,
-                    style="margin-top: 10px;"
+                    style="margin-top: 10px;",
                 )
 
 
@@ -1657,7 +1833,7 @@ def _get_selected_link_info(links_list, selected_index):
         # Step 2: Link type detection (priority order matters!)
 
         # Type 1: LinkSame (most common from app.add_link())
-        if hasattr(link, '_cid1') and hasattr(link, '_cid2'):
+        if hasattr(link, "_cid1") and hasattr(link, "_cid2"):
             from_comp = link._cid1
             to_comp = link._cid2
             from_data = link.data1
@@ -1666,16 +1842,22 @@ def _get_selected_link_info(links_list, selected_index):
 
         # Type 2: Coordinate helpers (2-to-2 or 3-to-3 transforms)
         # Must check BEFORE JoinLink (both have cids1/cids2)
-        elif 'coordinate_helpers' in str(type(link)):
-            if hasattr(link, 'data1') and hasattr(link, 'data2'):
+        elif "coordinate_helpers" in str(type(link)):
+            if hasattr(link, "data1") and hasattr(link, "data2"):
                 from_data = link.data1
                 to_data = link.data2
 
                 # Detect N-to-N coordinate transformation
-                if (hasattr(link, 'cids1') and hasattr(link, 'cids2') and
-                    hasattr(link, 'labels1') and hasattr(link, 'labels2') and
-                    link.cids1 and link.cids2 and link.labels1 and link.labels2):
-
+                if (
+                    hasattr(link, "cids1")
+                    and hasattr(link, "cids2")
+                    and hasattr(link, "labels1")
+                    and hasattr(link, "labels2")
+                    and link.cids1
+                    and link.cids2
+                    and link.labels1
+                    and link.labels2
+                ):
                     if len(link.cids1) >= 2 and len(link.cids2) >= 2:
                         # Multi-parameter coordinate pair detected
                         coord_type = type(link).__name__
@@ -1683,38 +1865,58 @@ def _get_selected_link_info(links_list, selected_index):
                         # Build Dataset 1 coordinate parameter info
                         param1_info = []
                         for i, comp in enumerate(link.cids1):
-                            param_name = link.labels1[i] if i < len(link.labels1) else f"coord1_{i+1}"
-                            param_selected = next((idx for idx, attr in enumerate(from_data.components)
-                                                 if attr == comp), 0)
+                            param_name = (
+                                link.labels1[i] if i < len(link.labels1) else f"coord1_{i+1}"
+                            )
+                            param_selected = next(
+                                (
+                                    idx
+                                    for idx, attr in enumerate(from_data.components)
+                                    if attr == comp
+                                ),
+                                0,
+                            )
 
                             param_data = {
                                 "name": param_name,
                                 "selected": param_selected,
                                 "component": comp,
-                                "label": getattr(comp, 'label', str(comp))
+                                "label": getattr(comp, "label", str(comp)),
                             }
                             param1_info.append(param_data)
 
                         # Build Dataset 2 coordinate parameter info
                         param2_info = []
                         for i, comp in enumerate(link.cids2):
-                            param_name = link.labels2[i] if i < len(link.labels2) else f"coord2_{i+1}"
-                            param_selected = next((idx for idx, attr in enumerate(to_data.components)
-                                                 if attr == comp), 0)
+                            param_name = (
+                                link.labels2[i] if i < len(link.labels2) else f"coord2_{i+1}"
+                            )
+                            param_selected = next(
+                                (
+                                    idx
+                                    for idx, attr in enumerate(to_data.components)
+                                    if attr == comp
+                                ),
+                                0,
+                            )
 
                             param_data = {
                                 "name": param_name,
                                 "selected": param_selected,
                                 "component": comp,
-                                "label": getattr(comp, 'label', str(comp))
+                                "label": getattr(comp, "label", str(comp)),
                             }
                             param2_info.append(param_data)
 
                         # Build dropdown options
-                        attr1_options = [{"label": getattr(attr, 'label', str(attr)), "value": idx}
-                                        for idx, attr in enumerate(from_data.components)]
-                        attr2_options = [{"label": getattr(attr, 'label', str(attr)), "value": idx}
-                                        for idx, attr in enumerate(to_data.components)]
+                        attr1_options = [
+                            {"label": getattr(attr, "label", str(attr)), "value": idx}
+                            for idx, attr in enumerate(from_data.components)
+                        ]
+                        attr2_options = [
+                            {"label": getattr(attr, "label", str(attr)), "value": idx}
+                            for idx, attr in enumerate(to_data.components)
+                        ]
 
                         result_data = {
                             "attr1_options": attr1_options,
@@ -1727,13 +1929,13 @@ def _get_selected_link_info(links_list, selected_index):
                             "is_coordinate_pair": True,
                             "coord1_param_info": param1_info,
                             "coord2_param_info": param2_info,
-                            "coordinate_type": coord_type
+                            "coordinate_type": coord_type,
                         }
 
                         return (link, result_data)
 
                 # Fallback: Single-parameter coordinate helper
-                if hasattr(link, 'cids1') and hasattr(link, 'cids2') and link.cids1 and link.cids2:
+                if hasattr(link, "cids1") and hasattr(link, "cids2") and link.cids1 and link.cids2:
                     from_comp = link.cids1[0]
                     to_comp = link.cids2[0]
                 else:
@@ -1745,7 +1947,12 @@ def _get_selected_link_info(links_list, selected_index):
                 return None  # Invalid coordinate helper structure
 
         # Type 3: JoinLink (database-style join on key columns)
-        elif hasattr(link, 'cids1') and hasattr(link, 'cids2') and hasattr(link, 'data1') and hasattr(link, 'data2'):
+        elif (
+            hasattr(link, "cids1")
+            and hasattr(link, "cids2")
+            and hasattr(link, "data1")
+            and hasattr(link, "data2")
+        ):
             # JoinLink: cids1 and cids2 are single-element lists
             from_comp = link.cids1[0] if link.cids1 else None
             to_comp = link.cids2[0] if link.cids2 else None
@@ -1757,7 +1964,7 @@ def _get_selected_link_info(links_list, selected_index):
                 return None  # Invalid JoinLink without key columns
 
         # Type 4: ComponentLink (transformation functions)
-        elif hasattr(link, '_from') and hasattr(link, '_to'):
+        elif hasattr(link, "_from") and hasattr(link, "_to"):
             if isinstance(link._from, list):
                 # Multi-input ComponentLink (e.g., lengths_to_volume)
                 from_comps = link._from
@@ -1771,8 +1978,8 @@ def _get_selected_link_info(links_list, selected_index):
 
                     # Extract function name for parameter labeling
                     function_name = "function"
-                    if hasattr(link, '_using') and link._using:
-                        function_name = getattr(link._using, '__name__', 'function')
+                    if hasattr(link, "_using") and link._using:
+                        function_name = getattr(link._using, "__name__", "function")
 
                     # Get function-specific parameter names
                     param_names = []
@@ -1787,14 +1994,16 @@ def _get_selected_link_info(links_list, selected_index):
                         param_name = param_names[i] if i < len(param_names) else f"param_{i+1}"
 
                         # Find current selection index
-                        param_selected = next((idx for idx, attr in enumerate(from_data.components)
-                                             if attr == comp), 0)
+                        param_selected = next(
+                            (idx for idx, attr in enumerate(from_data.components) if attr == comp),
+                            0,
+                        )
 
                         param_data = {
                             "name": param_name,
                             "selected": param_selected,
                             "component": comp,
-                            "label": getattr(comp, 'label', str(comp))
+                            "label": getattr(comp, "label", str(comp)),
                         }
 
                         param_info.append(param_data)
@@ -1817,17 +2026,22 @@ def _get_selected_link_info(links_list, selected_index):
 
         # Step 3: Build dropdown options for both datasets
         # Create list of {label, value} dicts for Solara v.Select components
-        attr1_options = [{"label": getattr(attr, 'label', str(attr)), "value": idx}
-                        for idx, attr in enumerate(from_data.components)]
-        attr2_options = [{"label": getattr(attr, 'label', str(attr)), "value": idx}
-                        for idx, attr in enumerate(to_data.components)]
+        attr1_options = [
+            {"label": getattr(attr, "label", str(attr)), "value": idx}
+            for idx, attr in enumerate(from_data.components)
+        ]
+        attr2_options = [
+            {"label": getattr(attr, "label", str(attr)), "value": idx}
+            for idx, attr in enumerate(to_data.components)
+        ]
 
         # Step 4: Build return data structure based on link complexity
         if is_multi_param:
             # Multi-parameter link: Return structure with parameter info arrays
             # Find current selection for output component
-            attr2_selected = next((idx for idx, attr in enumerate(to_data.components)
-                                 if attr == to_comp), 0)
+            attr2_selected = next(
+                (idx for idx, attr in enumerate(to_data.components) if attr == to_comp), 0
+            )
 
             result_data = {
                 "attr1_options": attr1_options,
@@ -1835,10 +2049,10 @@ def _get_selected_link_info(links_list, selected_index):
                 "attr1_selected": 0,  # Not used for multi-param (individual params have selections)
                 "attr2_selected": attr2_selected,
                 "attr1_label": f"{function_name} parameters",
-                "attr2_label": getattr(to_comp, 'label', str(to_comp)),
+                "attr2_label": getattr(to_comp, "label", str(to_comp)),
                 "is_multi_param": True,
                 "multi_param_info": param_info,  # List of parameter data dicts
-                "function_name": function_name
+                "function_name": function_name,
             }
 
             return (link, result_data)
@@ -1846,24 +2060,25 @@ def _get_selected_link_info(links_list, selected_index):
         else:
             # Single-parameter link: Return simple structure
             # Find current selections for both components
-            attr1_selected = next((idx for idx, attr in enumerate(from_data.components)
-                                 if attr == from_comp), 0)
-            attr2_selected = next((idx for idx, attr in enumerate(to_data.components)
-                                 if attr == to_comp), 0)
+            attr1_selected = next(
+                (idx for idx, attr in enumerate(from_data.components) if attr == from_comp), 0
+            )
+            attr2_selected = next(
+                (idx for idx, attr in enumerate(to_data.components) if attr == to_comp), 0
+            )
 
             result_data = {
                 "attr1_options": attr1_options,
                 "attr2_options": attr2_options,
                 "attr1_selected": attr1_selected,
                 "attr2_selected": attr2_selected,
-                "attr1_label": getattr(from_comp, 'label', str(from_comp)),
-                "attr2_label": getattr(to_comp, 'label', str(to_comp)),
-                "is_multi_param": False
+                "attr1_label": getattr(from_comp, "label", str(from_comp)),
+                "attr2_label": getattr(to_comp, "label", str(to_comp)),
+                "is_multi_param": False,
             }
 
             return (link, result_data)
 
-    except Exception as e:
+    except Exception:
         # Exception handler: Return None if any errors occur during link analysis
-        import traceback
         return None
