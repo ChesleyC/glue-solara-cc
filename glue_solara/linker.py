@@ -19,12 +19,10 @@ Performance:
 Qt Reference: glue_qt/dialogs/link_editor/link_editor.py (LinkEditor, LinkMenu classes)
 """
 
-import time
-
 import glue.core.message as msg
 import solara
 from glue.core import DataCollection
-from glue.core.link_helpers import JoinLink, BaseMultiLink
+from glue.core.link_helpers import BaseMultiLink, JoinLink
 from glue.dialogs.link_editor.state import LinkEditorState
 from glue_jupyter import JupyterApplication
 
@@ -173,7 +171,7 @@ def get_link_menu_data():
 
 # Module initialization: cache registry data before any component renders
 try:
-    import glue.plugins.coordinate_helpers.link_helpers
+    import glue.plugins.coordinate_helpers.link_helpers  # noqa: F401
 except Exception:
     pass
 
@@ -1227,7 +1225,7 @@ def LinkDetailsPanel(
                 except Exception:
                     app.add_link(from_data, new_component, to_data, old_component2)
 
-      # Small delay to let glue update internal state
+                # Small delay to let glue update internal state
                 shared_refresh_counter.set(shared_refresh_counter.value + 1)
                 new_position = len(data_collection.external_links) - 1
                 selected_link_index.set(-1)
@@ -1528,7 +1526,7 @@ def LinkDetailsPanel(
                     app.add_link(from_data, old_component1, to_data, new_component)
 
                 # Small delay to allow glue-core to update internal derivation cache
-        
+
                 # Force UI refresh by incrementing shared counter (invalidates memoization)
                 shared_refresh_counter.set(shared_refresh_counter.value + 1)
 
@@ -1821,7 +1819,7 @@ def _get_selected_link_info(links_list, selected_index):
                         param1_info = []
                         for i, comp in enumerate(link.cids1):
                             param_name = (
-                                link.labels1[i] if i < len(link.labels1) else f"coord1_{i+1}"
+                                link.labels1[i] if i < len(link.labels1) else f"coord1_{i + 1}"
                             )
                             param_selected = next(
                                 (
@@ -1844,7 +1842,7 @@ def _get_selected_link_info(links_list, selected_index):
                         param2_info = []
                         for i, comp in enumerate(link.cids2):
                             param_name = (
-                                link.labels2[i] if i < len(link.labels2) else f"coord2_{i+1}"
+                                link.labels2[i] if i < len(link.labels2) else f"coord2_{i + 1}"
                             )
                             param_selected = next(
                                 (
@@ -1941,12 +1939,12 @@ def _get_selected_link_info(links_list, selected_index):
                     if function_name == "lengths_to_volume":
                         param_names = ["width", "height", "depth"]
                     else:
-                        param_names = [f"param_{i+1}" for i in range(len(from_comps))]
+                        param_names = [f"param_{i + 1}" for i in range(len(from_comps))]
 
                     # Build parameter info for each input component
                     param_info = []
                     for i, comp in enumerate(from_comps):
-                        param_name = param_names[i] if i < len(param_names) else f"param_{i+1}"
+                        param_name = param_names[i] if i < len(param_names) else f"param_{i + 1}"
 
                         # Find current selection index
                         param_selected = next(
