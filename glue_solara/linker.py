@@ -19,10 +19,12 @@ Performance:
 Qt Reference: glue_qt/dialogs/link_editor/link_editor.py (LinkEditor, LinkMenu classes)
 """
 
+import time
+
 import glue.core.message as msg
 import solara
 from glue.core import DataCollection
-from glue.core.link_helpers import BaseMultiLink, JoinLink
+from glue.core.link_helpers import JoinLink, BaseMultiLink
 from glue.dialogs.link_editor.state import LinkEditorState
 from glue_jupyter import JupyterApplication
 
@@ -171,7 +173,7 @@ def get_link_menu_data():
 
 # Module initialization: cache registry data before any component renders
 try:
-    pass
+    import glue.plugins.coordinate_helpers.link_helpers
 except Exception:
     pass
 
@@ -1225,7 +1227,7 @@ def LinkDetailsPanel(
                 except Exception:
                     app.add_link(from_data, new_component, to_data, old_component2)
 
-                # Small delay to let glue update internal state
+      # Small delay to let glue update internal state
                 shared_refresh_counter.set(shared_refresh_counter.value + 1)
                 new_position = len(data_collection.external_links) - 1
                 selected_link_index.set(-1)
@@ -1526,7 +1528,7 @@ def LinkDetailsPanel(
                     app.add_link(from_data, old_component1, to_data, new_component)
 
                 # Small delay to allow glue-core to update internal derivation cache
-
+        
                 # Force UI refresh by incrementing shared counter (invalidates memoization)
                 shared_refresh_counter.set(shared_refresh_counter.value + 1)
 
