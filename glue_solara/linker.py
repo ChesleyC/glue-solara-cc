@@ -175,6 +175,11 @@ try:
 except Exception:
     pass
 
+try:
+    import glue.plugins.wcs_autolinking.wcs_autolinking  # noqa: F401
+except Exception:
+    pass
+
 _build_link_menu_cache()
 
 
