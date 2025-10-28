@@ -19,11 +19,11 @@ Performance:
 Qt Reference: glue_qt/dialogs/link_editor/link_editor.py (LinkEditor, LinkMenu classes)
 """
 
-import time
-
 import glue.core.message as msg
 import solara
 from glue.core import DataCollection
+from glue.core.link_helpers import BaseMultiLink, JoinLink
+from glue.dialogs.link_editor.state import LinkEditorState
 from glue_jupyter import JupyterApplication
 
 from .hooks import use_glue_watch
@@ -236,8 +236,6 @@ def AdvancedLinkMenu(
         is_join_request = helper_class_name == "JoinLink"
 
         try:
-            from glue.dialogs.link_editor.state import LinkEditorState
-
             temp_state = LinkEditorState(data_collection)
             temp_state.data1 = data1
             temp_state.data2 = data2
@@ -515,35 +513,6 @@ def _create_function_link(function_item, data1, data2, row1_index, row2_index, a
         raise
 
 
-def _create_helper_link(helper_item, data1, data2, app):
-    """Legacy: Create helper link using EditableLinkFunctionState."""
-    helper_object = helper_item["helper_object"]
-    helper_class = helper_object.helper
-
-    try:
-        if hasattr(helper_class, "cid_independent") and helper_class.cid_independent:
-            links = helper_class(data1=data1, data2=data2)
-        else:
-            from glue_qt.dialogs.link_editor.state import EditableLinkFunctionState
-
-            state = EditableLinkFunctionState(helper_class, data1=data1, data2=data2)
-            links = state.link
-
-        if isinstance(links, list):
-            for link in links:
-                app.data_collection.add_link(link)
-        else:
-            app.data_collection.add_link(links)
-    except Exception:
-        helper_instance = helper_class()
-        links = helper_instance(data1, data2)
-        if isinstance(links, list):
-            for link in links:
-                app.data_collection.add_link(link)
-        else:
-            app.data_collection.add_link(links)
-
-
 def stringify_links(link):
     """Format link for display in UI.
 
@@ -566,28 +535,18 @@ def stringify_links(link):
             cid2_label = getattr(link._cid2, "label", str(link._cid2))
             return f"{cid1_label} <-> {cid2_label}"
 
-        elif type(link).__name__ == "JoinLink":
+        elif isinstance(link, JoinLink):
             return str(link)
 
-        elif "coordinate_helpers" in str(type(link)):
-            link_class_name = type(link).__name__
+        elif isinstance(link, BaseMultiLink):
+            # All coordinate helpers have .display or .description attributes
             if hasattr(link, "description"):
                 return link.description
             elif hasattr(link, "display") and link.display:
                 return link.display
             else:
-                if "FK4_to_FK5" in link_class_name:
-                    return "FK4 (B1950) <-> FK5 (J2000)"
-                elif "Galactic_to_FK4" in link_class_name:
-                    return "Galactic <-> FK4 (B1950)"
-                elif "ICRS_to_FK5" in link_class_name:
-                    return "ICRS <-> FK5 (J2000)"
-                elif "ICRS_to_Galactic" in link_class_name:
-                    return "ICRS <-> Galactic"
-                elif "Galactic_to_FK5" in link_class_name:
-                    return "Galactic <-> FK5 (J2000)"
-                else:
-                    return f"Coordinate Transform ({link_class_name})"
+                # Fallback (should rarely be reached)
+                return f"Coordinate Transform ({type(link).__name__})"
 
         elif hasattr(link, "_from") and hasattr(link, "_to"):
             if isinstance(link._from, list) and len(link._from) > 0:
@@ -670,7 +629,6 @@ def Linker(app: JupyterApplication, show_list: bool = True):
             data_collection[selected_data2.value],
             data_collection[selected_data2.value].components[selected_row2.value],
         )
-        time.sleep(0.1)
         shared_refresh_counter.set(shared_refresh_counter.value + 1)
         new_position = len(data_collection.external_links) - 1
         selected_link_index.set(-1)
@@ -724,7 +682,7 @@ def Linker(app: JupyterApplication, show_list: bool = True):
                 with solara.Column(
                     style={"flex": "1 1 auto", "min-width": "200px", "max-width": "250px"}
                 ):
-                    QtStyleLinkDetailsPanel(
+                    LinkDetailsPanel(
                         app=app,
                         data_collection=data_collection,
                         selected_data1=selected_data1,
@@ -835,7 +793,7 @@ def CurrentLinksSelector(
 
 
 @solara.component
-def QtStyleLinkDetailsPanel(
+def LinkDetailsPanel(
     app: JupyterApplication,
     data_collection: DataCollection,
     selected_data1: solara.Reactive[int],
@@ -906,8 +864,6 @@ def QtStyleLinkDetailsPanel(
             link, link_data = selected_link_info
 
             try:
-                from glue.dialogs.link_editor.state import LinkEditorState
-
                 links_in_collection = list(data_collection.external_links)
                 target_index = None
 
@@ -932,12 +888,14 @@ def QtStyleLinkDetailsPanel(
                 if target_index >= len(temp_state.links):
                     return
 
+                # Remove the link from temp_state's list
+                temp_state.links.pop(target_index)
+
                 temp_state.update_links_in_collection()
 
             except Exception:
                 return
 
-            time.sleep(0.1)
             shared_refresh_counter.set(shared_refresh_counter.value + 1)
             selected_link_index.set(-1)
 
@@ -964,7 +922,7 @@ def QtStyleLinkDetailsPanel(
                 return
 
             if (
-                "coordinate_helpers" in str(type(link))
+                isinstance(link, BaseMultiLink)
                 and hasattr(link, "data1")
                 and hasattr(link, "data2")
             ):
@@ -1104,12 +1062,12 @@ def QtStyleLinkDetailsPanel(
                     old_component2 = link._cid2
                 elif hasattr(link, "_to"):
                     old_component2 = link._to
-                elif "coordinate_helpers" in str(type(link)) and hasattr(link, "cids2"):
+                elif isinstance(link, BaseMultiLink) and hasattr(link, "cids2"):
                     if link.cids2:
                         old_component2 = link.cids2[0]
                     else:
                         return
-                elif type(link).__name__ == "JoinLink" and hasattr(link, "cids2"):
+                elif isinstance(link, JoinLink) and hasattr(link, "cids2"):
                     if link.cids2:
                         old_component2 = link.cids2[0]
                     else:
@@ -1120,15 +1078,13 @@ def QtStyleLinkDetailsPanel(
                 original_link_type = type(link).__name__
 
                 # JoinLink special case: remove first due to __eq__ treating similar links as identical
-                if original_link_type == "JoinLink":
+                if isinstance(link, JoinLink):
                     try:
                         data_collection.remove_link(link)
                     except Exception:
                         pass
 
                 try:
-                    from glue.dialogs.link_editor.state import LinkEditorState
-
                     temp_state = LinkEditorState(data_collection)
                     temp_state.data1 = from_data
                     temp_state.data2 = to_data
@@ -1202,7 +1158,7 @@ def QtStyleLinkDetailsPanel(
                                 current_link.y = old_component2
 
                             elif (
-                                type(link).__name__ == "JoinLink"
+                                isinstance(link, JoinLink)
                                 and hasattr(current_link, "data1")
                                 and hasattr(current_link, "names1")
                             ):
@@ -1269,7 +1225,7 @@ def QtStyleLinkDetailsPanel(
                 except Exception:
                     app.add_link(from_data, new_component, to_data, old_component2)
 
-                time.sleep(0.1)  # Small delay to let glue update internal state
+                # Small delay to let glue update internal state
                 shared_refresh_counter.set(shared_refresh_counter.value + 1)
                 new_position = len(data_collection.external_links) - 1
                 selected_link_index.set(-1)
@@ -1299,7 +1255,7 @@ def QtStyleLinkDetailsPanel(
         Args:
             new_attr_index: Index of new Dataset 2 component in to_data.components
 
-        Parent function: QtStyleLinkDetailsPanel (line 750)
+        Parent function: LinkDetailsPanel (line 750)
         Called by: solara.v.Select on_v_model callback (line 1555)
         Calls: LinkEditorState, temp_state.new_link(), temp_state.update_links_in_collection()
 
@@ -1346,13 +1302,13 @@ def QtStyleLinkDetailsPanel(
                         ]  # Use first input for multi-parameter functions
                     else:
                         old_component1 = link._from
-                elif "coordinate_helpers" in str(type(link)) and hasattr(link, "cids1"):
+                elif isinstance(link, BaseMultiLink) and hasattr(link, "cids1"):
                     # Coordinate helpers: cids1 is always a list (2-to-2 or 3-to-3 transforms)
                     if link.cids1:
                         old_component1 = link.cids1[0]
                     else:
                         return  # Invalid coordinate helper without cids1
-                elif type(link).__name__ == "JoinLink" and hasattr(link, "cids1"):
+                elif isinstance(link, JoinLink) and hasattr(link, "cids1"):
                     # JoinLink: cids1 is a list with single element (key column)
                     if link.cids1:
                         old_component1 = link.cids1[0]
@@ -1366,15 +1322,13 @@ def QtStyleLinkDetailsPanel(
 
                 # JoinLink special handling: Remove before recreating
                 # JoinLink.__eq__ treats similar links as identical, causing issues with temp_state
-                if original_link_type == "JoinLink":
+                if isinstance(link, JoinLink):
                     try:
                         data_collection.remove_link(link)
                     except Exception:
                         pass  # Link may already be removed
 
                 try:
-                    from glue.dialogs.link_editor.state import LinkEditorState
-
                     # Step 3: Create temporary state and remove old link
                     temp_state = LinkEditorState(data_collection)
                     temp_state.data1 = from_data
@@ -1482,7 +1436,7 @@ def QtStyleLinkDetailsPanel(
                                 current_link.y = new_component  # Output (user's change)
 
                             elif (
-                                type(link).__name__ == "JoinLink"
+                                isinstance(link, JoinLink)
                                 and hasattr(current_link, "data2")
                                 and hasattr(current_link, "names2")
                             ):
@@ -1572,7 +1526,6 @@ def QtStyleLinkDetailsPanel(
                     app.add_link(from_data, old_component1, to_data, new_component)
 
                 # Small delay to allow glue-core to update internal derivation cache
-                time.sleep(0.1)
 
                 # Force UI refresh by incrementing shared counter (invalidates memoization)
                 shared_refresh_counter.set(shared_refresh_counter.value + 1)
@@ -1812,7 +1765,7 @@ def _get_selected_link_info(links_list, selected_index):
                 - function_name: Function name for display (optional)
                 - coordinate_type: Coordinate system name (optional)
 
-    Parent function: QtStyleLinkDetailsPanel (line 750)
+    Parent function: LinkDetailsPanel (line 750)
     Called by: solara.use_memo dependency (line 801)
     Used by: UI rendering logic (lines 1454-1587)
 
@@ -1842,7 +1795,7 @@ def _get_selected_link_info(links_list, selected_index):
 
         # Type 2: Coordinate helpers (2-to-2 or 3-to-3 transforms)
         # Must check BEFORE JoinLink (both have cids1/cids2)
-        elif "coordinate_helpers" in str(type(link)):
+        elif isinstance(link, BaseMultiLink):
             if hasattr(link, "data1") and hasattr(link, "data2"):
                 from_data = link.data1
                 to_data = link.data2
